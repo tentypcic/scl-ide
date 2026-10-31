@@ -20,7 +20,7 @@ This is an interpreter for a documented subset of SCL. It does not compile PLC m
 
 ## 🛠 Features
 
-- 📁 **Programs** — create, import, export, delete to trash and restore.
+- 📁 **Programs** — create, import, export, delete to trash, restore and empty trash with a named recovery snapshot.
 - ✏️ **Editor** — syntax colours, suggestions after one letter, structure members, IF / CASE / FOR snippets, indentation and formatting.
 - ▶️ **Simulation** — cyclic execution, editable inputs, typed variables, arrays, inline structures and simulated timers.
 - 🐞 **Debugger** — instruction / scan stepping, breakpoints, watches, execution-time inline values and signal traces.
@@ -41,7 +41,7 @@ npm test
 
 Serve **`dist/`** using a static HTTP server, for example `python3 -m http.server 8080 --directory dist`, then open `http://localhost:8080`. Browser module imports require HTTP; opening the HTML as `file://` is not supported.
 
-1. Create or open an SCL program.
+1. Create or open an SCL program, or choose **Kod testowy SCL** in the Files panel.
 2. Check the code and set inputs.
 3. Run, or use **F10** for one instruction and **Shift+F10** for one PLC scan.
 4. Download a project JSON to keep a separate copy of your work.
@@ -76,7 +76,7 @@ Every development milestone starts from an independent source checkpoint, uses a
 npm test
 ```
 
-The imported Sites v5 baseline passes **44 tests**; M1 adds **12 history/recovery tests**, for **56** total. GitHub Actions runs the suite on feature/fix pushes and pull requests. Tests cover the implemented interpreter, assistance, formatter, debugger and project history; they do not establish complete Siemens compatibility. See [the baseline](docs/BASELINE.md) and [M1 validation](docs/M1-HISTORY.md).
+The imported Sites v5 baseline passes **44 tests**; M1 adds **12 history/recovery tests**, for **56** at M1. The trash/test-program update adds another **8**, for **64** total. GitHub Actions runs the suite on feature/fix pushes and pull requests. Tests cover the implemented interpreter, assistance, formatter, debugger and project history; they do not establish complete Siemens compatibility. See [the baseline](docs/BASELINE.md) and [M1 validation](docs/M1-HISTORY.md).
 
 Current limits include one executed block / instance; no user FC/FB calls or project UDT resolver; no hardware, Motion Control, communication, safety instructions or full Siemens numeric semantics. Timers use simulation time. TIA Portal / PLCSIM remain the reference for exported SCL.
 
