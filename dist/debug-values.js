@@ -1,0 +1,7 @@
+// Snapshot references at the moment an instruction runs; never evaluate calls again.
+export function expressionRefs(expr,out=[]){if(!expr)return out;if(expr.k==='ref'){out.push(expr);for(const part of expr.path)for(const ix of part.indices||[])expressionRefs(ix,out);}else if(expr.k==='binary'){expressionRefs(expr.a,out);expressionRefs(expr.b,out);}else if(expr.k==='unary')expressionRefs(expr.a,out);else if(expr.k==='func')for(const a of expr.args)expressionRefs(a.value,out);return out;}
+export function snapshotRefs(machine,expressions,limit=4){const values=[],seen=new Set();for(const expression of expressions){for(const ref of expressionRefs(expression)){try{let resolved=machine.resolve(ref),v=resolved.obj[resolved.key],type=resolved.type;let path=ref.global?JSON.stringify(ref.root):'#'+ref.root;for(const part of ref.path)path+=part.field?'.'+part.field:'['+part.indices.map(ix=>machine.eval(ix).v).join(',')+']';
+ const add=(name,value,t)=>{if(seen.has(name)||values.length>=limit||typeof value==='object')return;seen.add(name);values.push({path:name,value,type:t});};
+ if(type.kind==='timer'){add(path+'.Q',v.Q,'BOOL');add(path+'.ET',v.ET,'TIME');}else add(path,v,type.name||type.kind);
+ }catch{/* Unresolved dynamic index is unavailable, never a fabricated zero. */}}}return values;}
+export function debugView(machine,running){if(!machine)return new Map();if(running)return machine.debugCompleted||new Map();return new Map([...(machine.debugCompleted||[]),...(machine.generator?machine.debugPending||[]:[])]);}

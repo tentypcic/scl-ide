@@ -1,0 +1,329 @@
+/*
+ANIMACJA 32 SILOWNIKOW: Belka[1..8], SilownikMagnes1..4.
+Uklad z rysunku: belka = kolumna, M1..M4 od gory.
+Belki nieparzyste: wiersze 1,3,5,7; parzyste: 2,4,6,8.
+
+IMPORT: TIA Portal -> External source files / Zewnetrzne pliki zrodlowe
+-> dodaj ten plik -> Generate blocks / Generuj bloki.
+W projekcie musi istniec DB "St1_Urzadzenia_A_DB" z polami ze zdjecia.
+Nazwy symboliczne sprawdz z projektem (w tym St1, nie Stl).
+Wywoluj FB cyklicznie z jednym DB instancji, takze gdy Start=FALSE.
+Zmienne instancji pozostaw bez retencji. Start dziala na zbocze narastajace.
+
+TRYBY:
+1: pojedyncza belka 1..8..1 (15 klatek), potem wszystkie zasuniete.
+2: pas po przekatnej, tam i z powrotem (15 klatek), potem zasuniecie.
+3: belki nieparzyste -> parzyste (2 klatki), potem zasuniecie.
+4: pary 4/5 -> 3/6 -> 2/7 -> 1/8 -> 2/7 -> 3/6 -> 4/5,
+   potem zasuniecie.
+Kazda taka sekwencja + potwierdzone zasuniecie to jedna petla.
+Na poczatku bloku nastepuje bazowe zasuniecie wszystkich 32 silownikow.
+CzasKlatki: czas ekspozycji PO osiagnieciu wszystkich zadanych pozycji.
+LimitRuchu: maksymalny czas dojscia calej klatki do zadanych pozycji.
+Parametry sa zapamietywane przy Start; zmiany w trakcie nie dzialaja.
+
+WYJSCIA:
+Zajety: trwa animacja lub kontrolowane zasuwanie po Stop.
+SterowanieAktywne: FB zapisuje polecenia w tym skanie; uzyj do blokady
+innych zrodel sterowania. TRUE takze w ostatnim skanie kasowania polecen.
+Gotowe: zakonczenie zadanej liczby petli, zatrzask do Start/Reset.
+Przerwano: Stop lub utrata Zezwolenie, zatrzask do Start/Reset.
+Blad: zatrzask do Reset. KodBledu: 1=parametry, 2=timeout,
+3=oba czujniki jednoczesnie. BladBelka/Magnes wskazuja pierwszy problem.
+Krok: 0=bezczynny, 10=zasuniecie poczatkowe, 20=animacja,
+30=zasuniecie po petli, 40=zasuniecie po Stop.
+
+Stop to zwykle zatrzymanie sekwencji z kontrolowanym zasunieciem,
+NIE funkcja bezpieczenstwa. Utrata Zezwolenie lub Blad kasuje polecenia;
+przy zaworach bistabilnych nie gwarantuje to zatrzymania fizycznego ruchu.
+Blok nie steruje hamulcami, magnesami ani obwodami bezpieczenstwa.
+Zezwolenie doprowadz z istniejacych warunkow dopuszczenia ruchu.
+W tym trybie inne fragmenty programu nie moga zapisywac Wysuw/Zasuw.
+W bezczynnosci FB nie zapisuje tych pol; po wyjsciu kasuje je raz.
+Nie wolno wywolywac tego FB warunkowo ani w kilku miejscach.
+
+PRZYKLAD WYWOLANIA (utworz DB instancji "AnimacjaMagnesow_DB"):
+"AnimacjaMagnesow_DB"(
+    Start := "HMI_StartAnimacji",
+    Stop := "HMI_StopAnimacji",
+    Reset := "HMI_ResetAnimacji",
+    Zezwolenie := "ZezwolenieNaAnimacje",
+    Tryb := 2,
+    LiczbaPetli := 3,
+    CzasKlatki := T#200ms,
+    LimitRuchu := T#3s);
+Podlaczone symbole HMI/Zezwolenie trzeba utworzyc lub zastapic swoimi.
+
+WERYFIKACJA: kod nie byl kompilowany w TIA ani sprawdzany na maszynie.
+Najpierw skompiluj w projekcie i sprawdz mapowanie w symulacji.
+Sprawdz tez Stop, brak czujnika, utrate Zezwolenie i blokade automatu.
+Dokumentacja timera:
+https://docs.tia.siemens.cloud/r/en-us/v20/scl-s7-1200-s7-1500/timer-operations-s7-1200-s7-1500/ton-generate-on-delay-s7-1200-s7-1500
+*/
+
+FUNCTION_BLOCK "FB_AnimacjaMagnesow"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 1.0
+   VAR_INPUT
+      Start : Bool;
+      Stop : Bool;
+      Reset : Bool;
+      Zezwolenie : Bool;
+      Tryb : Int := 2;
+      LiczbaPetli : Int := 3;
+      CzasKlatki : Time := T#200ms;
+      LimitRuchu : Time := T#3s;
+   END_VAR
+   VAR_OUTPUT
+      Zajety : Bool;
+      SterowanieAktywne : Bool;
+      Gotowe : Bool;
+      Przerwano : Bool;
+      Blad : Bool;
+      KodBledu : Int;
+      BladBelka : Int;
+      BladMagnes : Int;
+      WykonanePetle : Int;
+      Krok : Int;
+      NrKlatki : Int;
+   END_VAR
+   VAR
+      StartPoprz : Bool;
+      TrybAkt : Int;
+      PetleAkt : Int;
+      CzasAkt : Time;
+      LimitAkt : Time;
+      LiczbaKlatek : Int;
+      ResetTimerow : Bool;
+      TimerRuch : TON_TIME;
+      TimerKlatka : TON_TIME;
+   END_VAR
+   VAR_TEMP
+      b : Int;
+      m : Int;
+      Wiersz : Int;
+      Pas : Int;
+      Poziom : Int;
+      ZboczeStart : Bool;
+      BylZajety : Bool;
+      WszystkieOK : Bool;
+      Sprzecznosc : Bool;
+      PierwszaBelka : Int;
+      PierwszyMagnes : Int;
+      SprzecznaBelka : Int;
+      SprzecznyMagnes : Int;
+      Cel : Array[1..8, 1..4] of Bool;
+      CzW : Array[1..8, 1..4] of Bool;
+      CzZ : Array[1..8, 1..4] of Bool;
+      WyW : Array[1..8, 1..4] of Bool;
+      WyZ : Array[1..8, 1..4] of Bool;
+   END_VAR
+BEGIN
+    #ZboczeStart := #Start AND NOT #StartPoprz;
+    #StartPoprz := #Start;
+    #BylZajety := #Zajety;
+
+    // Reset nie przerywa ruchu. Do zatrzymania sluzy Stop.
+    IF #Reset AND NOT #Zajety THEN
+        #Blad := FALSE;
+        #KodBledu := 0;
+        #BladBelka := 0;
+        #BladMagnes := 0;
+        #Gotowe := FALSE;
+        #Przerwano := FALSE;
+    END_IF;
+
+    IF #ZboczeStart AND NOT #Zajety AND NOT #Blad
+        AND #Zezwolenie AND NOT #Stop AND NOT #Reset THEN
+        #Gotowe := FALSE;
+        #Przerwano := FALSE;
+        #WykonanePetle := 0;
+        #NrKlatki := 0;
+        IF (#Tryb < 1) OR (#Tryb > 4) OR (#LiczbaPetli < 1)
+            OR (#CzasKlatki < T#0ms) OR (#LimitRuchu <= T#0ms) THEN
+            #Blad := TRUE;
+            #KodBledu := 1;
+        ELSE
+            #TrybAkt := #Tryb;
+            #PetleAkt := #LiczbaPetli;
+            #CzasAkt := #CzasKlatki;
+            #LimitAkt := #LimitRuchu;
+            CASE #TrybAkt OF
+                1, 2: #LiczbaKlatek := 15;
+                3: #LiczbaKlatek := 2;
+                4: #LiczbaKlatek := 7;
+            END_CASE;
+            #Zajety := TRUE;
+            #Krok := 10;
+            #ResetTimerow := TRUE;
+        END_IF;
+    END_IF;
+
+    // Utrata dopuszczenia: skasowanie polecen bez automatycznego powrotu.
+    IF #Zajety AND NOT #Zezwolenie THEN
+        #Zajety := FALSE;
+        #Krok := 0;
+        #Przerwano := TRUE;
+        #ResetTimerow := TRUE;
+    END_IF;
+    IF #Zajety AND #Stop AND (#Krok <> 40) THEN
+        #Krok := 40;
+        #ResetTimerow := TRUE;
+    END_IF;
+
+    #SterowanieAktywne := #BylZajety OR #Zajety;
+    #WszystkieOK := TRUE;
+    #Sprzecznosc := FALSE;
+    #PierwszaBelka := 0;
+    #PierwszyMagnes := 0;
+    #SprzecznaBelka := 0;
+    #SprzecznyMagnes := 0;
+
+    // Jawne mapowanie czterech nazwanych struktur na tablice robocze.
+    FOR #b := 1 TO 8 DO
+        #CzW[#b, 1] := "St1_Urzadzenia_A_DB".Belka[#b].SilownikMagnes1.CzujnikWysuw;
+        #CzZ[#b, 1] := "St1_Urzadzenia_A_DB".Belka[#b].SilownikMagnes1.CzujnikZasuw;
+        #CzW[#b, 2] := "St1_Urzadzenia_A_DB".Belka[#b].SilownikMagnes2.CzujnikWysuw;
+        #CzZ[#b, 2] := "St1_Urzadzenia_A_DB".Belka[#b].SilownikMagnes2.CzujnikZasuw;
+        #CzW[#b, 3] := "St1_Urzadzenia_A_DB".Belka[#b].SilownikMagnes3.CzujnikWysuw;
+        #CzZ[#b, 3] := "St1_Urzadzenia_A_DB".Belka[#b].SilownikMagnes3.CzujnikZasuw;
+        #CzW[#b, 4] := "St1_Urzadzenia_A_DB".Belka[#b].SilownikMagnes4.CzujnikWysuw;
+        #CzZ[#b, 4] := "St1_Urzadzenia_A_DB".Belka[#b].SilownikMagnes4.CzujnikZasuw;
+
+        FOR #m := 1 TO 4 DO
+            #Cel[#b, #m] := FALSE;
+            #WyW[#b, #m] := FALSE;
+            #WyZ[#b, #m] := FALSE;
+            IF #Zajety AND (#Krok = 20) THEN
+                CASE #TrybAkt OF
+                    1:
+                        #Poziom := #NrKlatki;
+                        IF #Poziom > 8 THEN
+                            #Poziom := 16 - #NrKlatki;
+                        END_IF;
+                        #Cel[#b, #m] := (#b = #Poziom);
+                    2:
+                        #Wiersz := 2 * #m;
+                        IF (#b MOD 2) = 1 THEN
+                            #Wiersz := #Wiersz - 1;
+                        END_IF;
+                        #Pas := (#b + #Wiersz) / 2;
+                        #Poziom := #NrKlatki;
+                        IF #Poziom > 8 THEN
+                            #Poziom := 16 - #NrKlatki;
+                        END_IF;
+                        #Cel[#b, #m] := (#Pas = #Poziom);
+                    3:
+                        #Cel[#b, #m] := ((#b MOD 2) = (#NrKlatki MOD 2));
+                    4:
+                        #Poziom := #NrKlatki;
+                        IF #Poziom > 4 THEN
+                            #Poziom := 8 - #NrKlatki;
+                        END_IF;
+                        #Cel[#b, #m] := (#b = (5 - #Poziom))
+                            OR (#b = (4 + #Poziom));
+                END_CASE;
+            END_IF;
+
+            IF #Zajety THEN
+                // Bit polecenia utrzymany do potwierdzenia swojej pozycji.
+                #WyW[#b, #m] := #Cel[#b, #m] AND NOT #CzW[#b, #m];
+                #WyZ[#b, #m] := NOT #Cel[#b, #m] AND NOT #CzZ[#b, #m];
+                IF #CzW[#b, #m] AND #CzZ[#b, #m] THEN
+                    IF NOT #Sprzecznosc THEN
+                        #SprzecznaBelka := #b;
+                        #SprzecznyMagnes := #m;
+                    END_IF;
+                    #Sprzecznosc := TRUE;
+                END_IF;
+                IF (#Cel[#b, #m] AND NOT #CzW[#b, #m])
+                    OR (NOT #Cel[#b, #m] AND NOT #CzZ[#b, #m]) THEN
+                    IF #WszystkieOK THEN
+                        #PierwszaBelka := #b;
+                        #PierwszyMagnes := #m;
+                    END_IF;
+                    #WszystkieOK := FALSE;
+                END_IF;
+            END_IF;
+        END_FOR;
+    END_FOR;
+
+    // Oba timery sa wywolywane w kazdym skanie, rowniez podczas postoju.
+    #TimerRuch(IN := #Zajety AND NOT #WszystkieOK AND NOT #ResetTimerow,
+               PT := #LimitAkt);
+    #TimerKlatka(IN := #Zajety AND (#Krok = 20) AND #WszystkieOK
+                 AND NOT #Sprzecznosc AND NOT #ResetTimerow,
+                 PT := #CzasAkt);
+    #ResetTimerow := FALSE;
+
+    IF #Zajety AND (#Sprzecznosc OR #TimerRuch.Q) THEN
+        #Blad := TRUE;
+        IF #Sprzecznosc THEN
+            #KodBledu := 3;
+            #BladBelka := #SprzecznaBelka;
+            #BladMagnes := #SprzecznyMagnes;
+        ELSE
+            #KodBledu := 2;
+            #BladBelka := #PierwszaBelka;
+            #BladMagnes := #PierwszyMagnes;
+        END_IF;
+        #Zajety := FALSE;
+        #Krok := 0;
+        #ResetTimerow := TRUE;
+    END_IF;
+
+    IF #Zajety THEN
+        CASE #Krok OF
+            10:
+                IF #WszystkieOK THEN
+                    #NrKlatki := 1;
+                    #Krok := 20;
+                    #ResetTimerow := TRUE;
+                END_IF;
+            20:
+                IF #WszystkieOK AND #TimerKlatka.Q THEN
+                    IF #NrKlatki < #LiczbaKlatek THEN
+                        #NrKlatki := #NrKlatki + 1;
+                    ELSE
+                        #Krok := 30;
+                    END_IF;
+                    #ResetTimerow := TRUE;
+                END_IF;
+            30:
+                IF #WszystkieOK THEN
+                    #WykonanePetle := #WykonanePetle + 1;
+                    IF #WykonanePetle >= #PetleAkt THEN
+                        #Gotowe := TRUE;
+                        #Zajety := FALSE;
+                        #Krok := 0;
+                    ELSE
+                        #NrKlatki := 1;
+                        #Krok := 20;
+                    END_IF;
+                    #ResetTimerow := TRUE;
+                END_IF;
+            40:
+                IF #WszystkieOK THEN
+                    #Przerwano := TRUE;
+                    #Zajety := FALSE;
+                    #Krok := 0;
+                    #ResetTimerow := TRUE;
+                END_IF;
+        END_CASE;
+    END_IF;
+
+    // Przy wyjsciu z pracy kasowanie wszystkich polecen w tym samym skanie.
+    // Nie zapisuj polecen w bezczynnosci: inne tryby moga wtedy ich uzywac.
+    IF #SterowanieAktywne THEN
+        FOR #b := 1 TO 8 DO
+            "St1_Urzadzenia_A_DB".Belka[#b].SilownikMagnes1.Wysuw := #WyW[#b, 1] AND #Zajety;
+            "St1_Urzadzenia_A_DB".Belka[#b].SilownikMagnes1.Zasuw := #WyZ[#b, 1] AND #Zajety;
+            "St1_Urzadzenia_A_DB".Belka[#b].SilownikMagnes2.Wysuw := #WyW[#b, 2] AND #Zajety;
+            "St1_Urzadzenia_A_DB".Belka[#b].SilownikMagnes2.Zasuw := #WyZ[#b, 2] AND #Zajety;
+            "St1_Urzadzenia_A_DB".Belka[#b].SilownikMagnes3.Wysuw := #WyW[#b, 3] AND #Zajety;
+            "St1_Urzadzenia_A_DB".Belka[#b].SilownikMagnes3.Zasuw := #WyZ[#b, 3] AND #Zajety;
+            "St1_Urzadzenia_A_DB".Belka[#b].SilownikMagnes4.Wysuw := #WyW[#b, 4] AND #Zajety;
+            "St1_Urzadzenia_A_DB".Belka[#b].SilownikMagnes4.Zasuw := #WyZ[#b, 4] AND #Zajety;
+        END_FOR;
+    END_IF;
+END_FUNCTION_BLOCK
