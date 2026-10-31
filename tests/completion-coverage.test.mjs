@@ -66,3 +66,8 @@ test('signature help supports the same Polish timer identifiers as the parser',(
   const source='VAR Opóźnienie:TON_TIME; END_VAR\nBEGIN\n#Opóźnienie(';
   const data=collectSymbols(source);assert.match(signatureAt(source,source.length,data),/^#Opóźnienie\(IN := BOOL, PT := TIME/);
 });
+test('typed FUNCTION return variable is suggested as the implicit output while editing',()=>{
+  const source='FUNCTION "Wynik_FC" : INT\nVAR_INPUT\nValue : INT;\nEND_VAR\nBEGIN\n#Wyn';
+  const data=collectSymbols(source),item=suggestions(source,source.length,data).items.find(i=>i.label==='#Wynik_FC');
+  assert.ok(item);assert.match(item.detail,/INT.*VAR_OUTPUT/);
+});

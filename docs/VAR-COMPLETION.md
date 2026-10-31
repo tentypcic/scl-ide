@@ -18,7 +18,7 @@ This is coverage of the currently implemented editor/interpreter subset. It does
 
 ## Validation
 
-`npm test`: **91 pass** (80 existing + 11 new).
+`npm test`: **92 pass** (80 existing + 12 new).
 
 - Every one of the 63 actual function completion templates is expanded with valid representative arguments, parsed and evaluated; named/positional style and signature help are checked.
 - Every accepted type and declaration section is suggested and parsed. All catalogue keywords are reachable and unsupported instruction families remain absent.

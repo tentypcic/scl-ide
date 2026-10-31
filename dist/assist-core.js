@@ -39,7 +39,7 @@ const types=supportedTypes;
 function sectionPrefix(source){const re=/\/\*[\s\S]*?\*\/|\(\*[\s\S]*?\*\)|\/\/[^\n]*|"(?:[^"]|"")*"|'(?:[^']|'')*'|\bBEGIN\b/gi;for(const m of source.matchAll(re))if(m[0].toUpperCase()==='BEGIN')return source.slice(0,m.index);const ends=[...source.matchAll(/\bEND_VAR\b/gi)];if(ends.length){const last=ends.at(-1);return source.slice(0,last.index+last[0].length);}return '';}
 export function collectSymbols(source,machine=null,globalsJSON='{}'){
  let locals={...(machine?.schemas||{})},sections={...(machine?.sections||{})},globals={...(machine?.globals||{})};
- try{const prefix=sectionPrefix(source);if(prefix){const p=new Parser(prefix+'\nBEGIN\nEND_FUNCTION_BLOCK').parse();locals={};sections={};for(const d of p.decls){locals[d.name]=d.type;sections[d.name]=d.section;}}}catch{}
+ try{const prefix=sectionPrefix(source);if(prefix){const p=new Parser(prefix+'\nBEGIN\nEND_FUNCTION_BLOCK').parse();locals={};sections={};for(const d of p.decls){locals[d.name]=d.type;sections[d.name]=d.section;}if(p.returnType&&!Object.hasOwn(locals,p.name)){locals[p.name]=p.returnType;sections[p.name]='VAR_OUTPUT';}}}catch{}
  try{globals={...globals,...globalsFromJSON(globalsJSON)};}catch{}
  return {locals,sections,globals};
 }
