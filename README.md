@@ -1,9 +1,9 @@
-# Automation IDE — SCL Lab
+# SCL IDE
 
 <p align="center">
   Browser-based <strong>SCL editor + PLC simulator</strong><br />
   Built with plain <strong>HTML + CSS + JavaScript</strong>, without runtime dependencies.<br />
-  <a href="https://scl-lab-magnesy.tentypcic.chatgpt.site">Open SCL Lab</a> ·
+  <a href="https://scl-lab-magnesy.tentypcic.chatgpt.site">Open SCL IDE</a> ·
   <a href="https://github.com/tentypcic/automation-ide/issues">Report Bug</a> ·
   <a href="docs/ROADMAP.md">Roadmap</a>
 </p>
@@ -12,7 +12,7 @@
 
 ## 🧠 About The Project
 
-**Automation IDE** grows out of SCL Lab: a browser workspace for writing, analysing and testing Siemens SCL before checking it in TIA Portal.
+**SCL IDE** (repository: Automation IDE) is a browser workspace for writing, analysing and testing Siemens SCL before checking it in TIA Portal.
 
 The first goal is a dependable **SCL workflow**: useful suggestions while typing, clear diagnostics, visible values during execution and recoverable project changes. A separate VBScript / WinCC Comfort / Runtime Advanced adapter is planned **after the SCL milestones**.
 
@@ -26,6 +26,8 @@ This is an interpreter for a documented subset of SCL. It does not compile PLC m
 - 🐞 **Debugger** — instruction / scan stepping, breakpoints, watches, execution-time inline values and signal traces.
 - 💾 **Local project data** — JSON import/export and browser storage.
 - ◷ **Project history** — automatic recovery points, named versions, line comparison and whole-project restoration. JSON exports include retained history.
+
+The surrounding workspace uses compact tool/settings menus, keyboard-accessible panels and a recoverable trash workflow. See [the interface audit](docs/INTERFACE-AUDIT.md).
 
 See [the roadmap](docs/ROADMAP.md) for implementation status and acceptance criteria. Planned items are not an assurance of existing language support.
 
@@ -46,7 +48,7 @@ Serve **`dist/`** using a static HTTP server, for example `python3 -m http.serve
 3. Run, or use **F10** for one instruction and **Shift+F10** for one PLC scan.
 4. Download a project JSON to keep a separate copy of your work.
 
-The hosted SCL Lab currently requires its owner's ChatGPT access. A private repository does not make that hosted page public.
+The hosted SCL IDE currently requires its owner's ChatGPT access. A private repository does not make that hosted page public.
 
 ## 📂 Project Structure
 
@@ -77,7 +79,7 @@ Every development milestone starts from an independent source checkpoint, uses a
 npm test
 ```
 
-The current suite passes **92 tests**: the original 80 plus 12 VAR-folding/completion regressions. Coverage checks exercise completion templates against all 63 executable functions, all 29 accepted types and all seven declaration sections. GitHub Actions runs the suite on feature/fix pushes and pull requests. Tests cover the implemented interpreter, assistance, formatter, debugger, project history and folded editing; they do not establish complete Siemens compatibility. See [the baseline](docs/BASELINE.md), [M1 validation](docs/M1-HISTORY.md) and [folding validation](docs/CODE-FOLDING.md).
+The current suite passes **100 tests**, including workspace panel transitions, settings persistence and import validation. Coverage checks exercise completion templates against all 63 executable functions, all 29 accepted types and all seven declaration sections. GitHub Actions runs the suite on feature/fix pushes and pull requests. Tests cover the implemented interpreter, assistance, formatter, debugger, project history and folded editing; they do not establish complete Siemens compatibility. See [the baseline](docs/BASELINE.md), [M1 validation](docs/M1-HISTORY.md) and [folding validation](docs/CODE-FOLDING.md).
 
 Current limits include one executed block / instance; no user FC/FB calls or project UDT resolver; no hardware, Motion Control, communication, safety instructions or full Siemens numeric semantics. Timers use simulation time. TIA Portal / PLCSIM remain the reference for exported SCL.
 
