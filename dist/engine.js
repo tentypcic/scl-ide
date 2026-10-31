@@ -1,11 +1,13 @@
 import {snapshotRefs} from './debug-values.js';
+import {primitiveTypes,timerTypes,declarationSections} from './language-catalog.js';
+export {supportedTypes,declarationSections,languageKeywords} from './language-catalog.js';
 import {supportsStandard,callStandard,standardSignatures} from './standard-functions.js';
 /* SCL Lab: bounded, AST-based educational interpreter. No eval or generated JS. */
 export class SclError extends Error {
   constructor(message, token={line:1,col:1}) { super(message); this.line=token.line||1;this.col=token.col||1;this.name='SclError'; }
 }
-const primitive=new Set(['BOOL','INT','DINT','SINT','LINT','UINT','UDINT','USINT','ULINT','REAL','LREAL','TIME','LTIME','WORD','DWORD','BYTE','LWORD','STRING','CHAR']);
-const timers=new Set(['TON_TIME','TOF_TIME','TP_TIME','IEC_TIMER','TON','TOF','TP','R_TRIG','F_TRIG']);
+const primitive=new Set(primitiveTypes);
+const timers=new Set(timerTypes);
 const own=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);
 const safeKey=k=>{if(['__proto__','prototype','constructor'].includes(String(k).toLowerCase()))throw new SclError('Niedozwolona nazwa: '+k);return k;};
 export function lex(source) {
@@ -64,7 +66,7 @@ export class Parser {
  parse(){
   if(this.is('FUNCTION_BLOCK')||this.is('FUNCTION')||this.is('ORGANIZATION_BLOCK')){const kind=this.next().u;this.name=this.ident().text;if(kind==='FUNCTION'){this.need(':');if(!this.eat('VOID'))this.returnType=this.type();}}
   if(this.eat('VERSION')){this.need(':');this.next();}
-  while(['VAR','VAR_INPUT','VAR_OUTPUT','VAR_IN_OUT','VAR_TEMP','VAR_CONSTANT','VAR_STAT'].includes(this.peek().u)){
+  while(declarationSections.includes(this.peek().u)){
    const section=this.next().u;this.eat('RETAIN');this.eat('NON_RETAIN');this.decls.push(...this.declarationList(section));this.need('END_VAR');this.eat(';');
   }
   this.eat('BEGIN');const body=this.block(new Set(['END_FUNCTION_BLOCK','END_FUNCTION','END_ORGANIZATION_BLOCK','EOF']));

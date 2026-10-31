@@ -21,7 +21,7 @@ This is an interpreter for a documented subset of SCL. It does not compile PLC m
 ## 🛠 Features
 
 - 📁 **Programs** — create, import, export, delete to trash, restore and empty trash with a named recovery snapshot.
-- ✏️ **Editor** — syntax colours, suggestions after one letter, structure members, IF / CASE / FOR snippets, indentation, formatting and nested IF / FOR / WHILE / REPEAT / CASE / REGION folding.
+- ✏️ **Editor** — syntax colours, suggestions after one letter, structure members, IF / CASE / FOR snippets, indentation, formatting and nested IF / FOR / WHILE / REPEAT / CASE / REGION / VAR / STRUCT folding. Completion covers all 63 current functions, 29 accepted types and all declaration sections.
 - ▶️ **Simulation** — cyclic execution, editable inputs, typed variables, arrays, inline structures and simulated timers.
 - 🐞 **Debugger** — instruction / scan stepping, breakpoints, watches, execution-time inline values and signal traces.
 - 💾 **Local project data** — JSON import/export and browser storage.
@@ -77,7 +77,7 @@ Every development milestone starts from an independent source checkpoint, uses a
 npm test
 ```
 
-The current suite passes **80 tests**: 44 baseline, 12 history/recovery, 8 trash/sample and 16 folding tests. GitHub Actions runs the suite on feature/fix pushes and pull requests. Tests cover the implemented interpreter, assistance, formatter, debugger, project history and folded editing; they do not establish complete Siemens compatibility. See [the baseline](docs/BASELINE.md), [M1 validation](docs/M1-HISTORY.md) and [folding validation](docs/CODE-FOLDING.md).
+The current suite passes **91 tests**: the original 80 plus 11 VAR-folding/completion regressions. Coverage checks exercise completion templates against all 63 executable functions, all 29 accepted types and all seven declaration sections. GitHub Actions runs the suite on feature/fix pushes and pull requests. Tests cover the implemented interpreter, assistance, formatter, debugger, project history and folded editing; they do not establish complete Siemens compatibility. See [the baseline](docs/BASELINE.md), [M1 validation](docs/M1-HISTORY.md) and [folding validation](docs/CODE-FOLDING.md).
 
 Current limits include one executed block / instance; no user FC/FB calls or project UDT resolver; no hardware, Motion Control, communication, safety instructions or full Siemens numeric semantics. Timers use simulation time. TIA Portal / PLCSIM remain the reference for exported SCL.
 
