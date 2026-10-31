@@ -1,5 +1,5 @@
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, readFileSync, writeFileSync, copyFileSync, realpathSync} from 'node:fs';
+import {mkdirSync, readFileSync, writeFileSync, copyFileSync, realpathSync, lstatSync} from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 
@@ -20,7 +20,7 @@ for (const file of files) {
   if (file.split('/').some(p => p === '..') || path.isAbsolute(file)) throw Error('Unsafe source path.');
   if (/^(\.env(?!\.example$)|id_rsa$|id_ed25519$)|\.(pem|key|p12|pfx)$/i.test(path.basename(file))) throw Error('Review secret-like file before checkpointing: ' + file);
   const from = path.join(root, file); let data;
-  try {data = readFileSync(from);} catch (error) {if (error.code === 'ENOENT') continue; throw error;}
+  try {if (lstatSync(from).isSymbolicLink()) throw Error('Review symbolic link before checkpointing: ' + file); data = readFileSync(from);} catch (error) {if (error.code === 'ENOENT') continue; throw error;}
   const to = path.join(out, 'source', file); mkdirSync(path.dirname(to), {recursive: true}); copyFileSync(from, to);
   checksums['source/' + file] = createHash('sha256').update(data).digest('hex');
 }

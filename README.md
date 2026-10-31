@@ -25,6 +25,7 @@ This is an interpreter for a documented subset of SCL. It does not compile PLC m
 - ▶️ **Simulation** — cyclic execution, editable inputs, typed variables, arrays, inline structures and simulated timers.
 - 🐞 **Debugger** — instruction / scan stepping, breakpoints, watches, execution-time inline values and signal traces.
 - 💾 **Local project data** — JSON import/export and browser storage.
+- ◷ **Project history** — automatic recovery points, named versions, line comparison and whole-project restoration. JSON exports include retained history.
 
 See [the roadmap](docs/ROADMAP.md) for implementation status and acceptance criteria. Planned items are not an assurance of existing language support.
 
@@ -55,6 +56,7 @@ The hosted SCL Lab currently requires its owner's ChatGPT access. A private repo
 | `dist/engine.js` | Existing parser and interpreter |
 | `dist/assist-core.js`, `dist/assist.js` | Editor suggestions and snippets |
 | `dist/formatter.js` | SCL indentation |
+| `dist/project-history.js`, `dist/history-panel.js` | Atomic history storage, line diff and recovery UI |
 | `dist/debug-values.js`, `dist/inline-monitor.js` | Execution samples and inline display |
 | `tests/` | Node.js regression tests |
 | `docs/` | Architecture, milestones, baseline and recovery |
@@ -62,7 +64,9 @@ The hosted SCL Lab currently requires its owner's ChatGPT access. A private repo
 
 ## 💾 Data and Recovery
 
-Programs stay in browser storage for the current origin. They do not sync to GitHub or other devices. Clearing browser data can remove saved programs; download project JSON regularly. GitHub protects **application source**, not the programs written in a user's browser.
+Programs stay in browser storage for the current origin. They do not sync to GitHub or other devices. Clearing browser data can remove saved programs and history; download project JSON regularly. GitHub protects **application source**, not the programs written in a user's browser.
+
+History records the previous saved workspace after an 800 ms pause in editing, with separate checkpoints before formatting, import, deletion and restore. Keep 30 latest automatic points plus named versions. Restore replaces the whole project and resets simulation, retaining the previous workspace first. Storage failures are reported; conflict checks help stop stale tabs overwriting newer saves, but are not a simultaneous multi-tab transaction.
 
 Every development milestone starts from an independent source checkpoint, uses a focused branch, and ends with tests and a reviewable pull request. See [development and recovery](docs/DEVELOPMENT.md).
 
@@ -72,7 +76,7 @@ Every development milestone starts from an independent source checkpoint, uses a
 npm test
 ```
 
-The imported Sites v5 baseline passes **44 tests**. Tests cover the implemented interpreter, assistance, formatter and debugger; they do not establish complete Siemens compatibility. See [the baseline](docs/BASELINE.md).
+The imported Sites v5 baseline passes **44 tests**; M1 adds **12 history/recovery tests**, for **56** total. GitHub Actions runs the suite on feature/fix pushes and pull requests. Tests cover the implemented interpreter, assistance, formatter, debugger and project history; they do not establish complete Siemens compatibility. See [the baseline](docs/BASELINE.md) and [M1 validation](docs/M1-HISTORY.md).
 
 Current limits include one executed block / instance; no user FC/FB calls or project UDT resolver; no hardware, Motion Control, communication, safety instructions or full Siemens numeric semantics. Timers use simulation time. TIA Portal / PLCSIM remain the reference for exported SCL.
 

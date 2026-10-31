@@ -5,7 +5,7 @@ SCL first. Each row is a separate change set, branch, before-change checkpoint a
 | Stage | Scope | Acceptance | Status |
 | --- | --- | --- | --- |
 | M0 | Source access, independent baseline, restore test | Sites v5 commit matched; source restored separately; original 44 tests pass | Done |
-| M1 | Project history, named versions, diff, restore, JSON round trip | Recover edited/imported/deleted workspace; write failure retains previous data; reload and restore verified | In progress on `feat/scl-project-history` |
+| M1 | Project history, named versions, diff, restore, JSON round trip | Recover edited/imported/deleted workspace; write failure retains previous data; reload and restore verified | Implemented on `feat/scl-project-history`; awaiting user review |
 | M2 | SCL parser audit and regressions | Nested CASE / loops, incorrect syntax, quoted DB names, stable error ranges; fix found failures | Planned |
 | M3 | Language-service facade and symbol index | Suggestions resolve declarations and scopes; parser can analyse unfinished source without execution | Planned |
 | M4 | SCL types and project definitions | DB/UDT/ARRAY references resolve; unsupported runtime constructs remain explicit | Planned |
