@@ -9,7 +9,7 @@ const record = value => value !== null && typeof value === 'object' && !Array.is
 
 export function validateProject(value) {
   if (!record(value) || ![1, 2, 3].includes(value.version) || typeof value.code !== 'string') {
-    throw Error('To nie jest plik projektu SCL Lab.');
+    throw Error('To nie jest plik projektu SCL IDE.');
   }
   for (const key of ['drafts', 'projectFiles']) {
     if (value[key] !== undefined && (!record(value[key]) || Object.values(value[key]).some(x => typeof x !== 'string'))) {
@@ -77,8 +77,9 @@ export class ProjectHistory {
   current() { return clone(this.state.current); }
   entries() { return clone(this.state.entries); }
 
-  save(project, {label = 'Edycja programu', checkpoint = false, kind = 'auto', imported = []} = {}) {
+  save(project, {label = 'Edycja programu', checkpoint = false, kind = 'auto', imported = [], recovery = null} = {}) {
     const current = projectCopy(project);
+    if (recovery) validateProject(recovery.project);
     validateEntries(imported);
     if (!['auto', 'manual'].includes(kind)) throw Error('Nieprawidłowy rodzaj wersji.');
     if (this.storage.getItem(this.key) !== this.raw) throw Error('Projekt zmienił się w innej karcie. Pobierz swoją pracę i odśwież stronę, aby uniknąć nadpisania.');
@@ -89,7 +90,9 @@ export class ProjectHistory {
       if (entryKind === 'auto' && last && JSON.stringify(last.project) === JSON.stringify(projectCopy(p))) return;
       next.entries.push({id: this.id(), createdAt: this.now(), label: String(text).trim().slice(0, 160) || 'Wersja projektu', kind: entryKind, project: projectCopy(p)});
     };
-    if (next.current && projectContent(next.current) !== projectContent(current)) push(next.current, 'Przed: ' + label, 'auto');
+    const recoveryIsCurrent = recovery && next.current && JSON.stringify(next.current) === JSON.stringify(projectCopy(recovery.project));
+    if (next.current && projectContent(next.current) !== projectContent(current) && !recoveryIsCurrent) push(next.current, 'Przed: ' + label, 'auto');
+    if (recovery) push(recovery.project, recovery.label, 'manual');
     if (checkpoint) push(current, label, kind);
     const ids = new Set(next.entries.map(e => e.id));
     for (const entry of imported) if (!ids.has(entry.id)) { next.entries.push(clone(entry)); ids.add(entry.id); }
@@ -108,6 +111,15 @@ export class ProjectHistory {
   }
 
   export(project) { return {...projectCopy(project), revisionHistory: {format: 1, entries: this.entries()}}; }
+
+  emptyTrash(project) {
+    const before = projectCopy(project);
+    if (!Object.keys(before.trash || {}).length) return before;
+    return this.save({...before, trash: {}}, {
+      label: 'Opróżnienie kosza',
+      recovery: {project: before, label: 'Przed opróżnieniem kosza'},
+    });
+  }
 }
 
 export function importedEntries(project) {

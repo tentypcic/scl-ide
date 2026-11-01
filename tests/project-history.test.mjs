@@ -86,3 +86,26 @@ test('large line diff uses bounded fallback while retaining all source text', ()
   const a = Array.from({length: 600}, (_, n) => 'old' + n).join('\n'), b = Array.from({length: 600}, (_, n) => 'new' + n).join('\n');
   const d = diffLines(a, b); assert.equal(d.simplified, true); assert.equal(d.removed, 600); assert.equal(d.added, 600);
 });
+test('empty trash preserves active code and creates a named recovery of all removed programs', () => {
+  const h = history(storage(), {autoLimit: 1});
+  const p = {...project(), trash: {a: {filename: 'A.scl', code: 'A'}, b: {filename: 'B.scl', code: 'B'}}};
+  h.save(p);
+  const pending = {...p, code: 'unsaved edit', watches: ['#x']};
+  const next = h.emptyTrash(pending);
+  assert.deepEqual(next.trash, {}); assert.equal(next.code, 'unsaved edit');
+  assert.deepEqual(next.drafts, p.drafts); assert.deepEqual(next.watches, ['#x']);
+  const recovery = h.entries().find(e => e.label === 'Przed opróżnieniem kosza');
+  assert.equal(recovery.kind, 'manual'); assert.deepEqual(recovery.project.trash, p.trash);
+  assert.equal(recovery.project.code, 'unsaved edit');
+  for (let i = 0; i < 4; i++) h.save({...next, code: String(i)});
+  assert.ok(h.entries().some(e => e.id === recovery.id));
+  h.save(recovery.project); assert.deepEqual(h.current().trash, p.trash);
+});
+test('failed trash write leaves removed programs and history unchanged; empty trash is a no-op', () => {
+  const s = storage(), h = history(s); h.save(project());
+  const empty = s.getItem(HISTORY_KEY); h.emptyTrash(project()); assert.equal(s.getItem(HISTORY_KEY), empty);
+  const p = {...project(), trash: {a: {filename: 'A.scl', code: 'A'}}}; h.save(p);
+  const before = s.getItem(HISTORY_KEY), entries = h.entries(); s.setItem = () => {throw Error('quota');};
+  assert.throws(() => h.emptyTrash(p), /quota/);
+  assert.deepEqual(h.current().trash, p.trash); assert.deepEqual(h.entries(), entries); assert.equal(s.getItem(HISTORY_KEY), before);
+});

@@ -1,51 +1,64 @@
 import {snapshotRefs} from './debug-values.js';
+import {primitiveTypes,timerTypes,declarationSections} from './language-catalog.js';
+export {supportedTypes,declarationSections,languageKeywords} from './language-catalog.js';
 import {supportsStandard,callStandard,standardSignatures} from './standard-functions.js';
 /* SCL Lab: bounded, AST-based educational interpreter. No eval or generated JS. */
 export class SclError extends Error {
-  constructor(message, token={line:1,col:1}) { super(message); this.line=token.line||1;this.col=token.col||1;this.name='SclError'; }
+  constructor(message, token={line:1,col:1}) { super(message); this.line=token.line||1;this.col=token.col||1;this.name='SclError';this.range=Number.isInteger(token.start)&&Number.isInteger(token.end)?{start:token.start,end:token.end}:null;this.endLine=token.endLine||this.line;this.endCol=token.endCol||this.col; }
 }
-const primitive=new Set(['BOOL','INT','DINT','SINT','LINT','UINT','UDINT','USINT','ULINT','REAL','LREAL','TIME','LTIME','WORD','DWORD','BYTE','LWORD','STRING','CHAR']);
-const timers=new Set(['TON_TIME','TOF_TIME','TP_TIME','IEC_TIMER','TON','TOF','TP','R_TRIG','F_TRIG']);
+const primitive=new Set(primitiveTypes);
+const timers=new Set(timerTypes);
 const own=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);
-const safeKey=k=>{if(['__proto__','prototype','constructor'].includes(String(k).toLowerCase()))throw new SclError('Niedozwolona nazwa: '+k);return k;};
+const safeKey=(k,tok)=>{if(['__proto__','prototype','constructor'].includes(String(k).toLowerCase()))throw new SclError('Niedozwolona nazwa: '+k,tok);return k;};
 export function lex(source) {
  let p=0,line=1,col=1,out=[];
- const add=(kind,text,l=line,c=col)=>out.push({kind,text,line:l,col:c,u:kind==='id'?text.toUpperCase():text});
- const advance=s=>{for(const ch of s){if(ch==='\n'){line++;col=1;}else col++;}p+=s.length;};
+ // All offsets/columns use UTF-16 code units, matching textarea selections.
+ const position=(length=1)=>{const raw=source.slice(p,p+length),parts=raw.split('\n');return {line,col,start:p,end:p+raw.length,endLine:line+parts.length-1,endCol:parts.length>1?parts.at(-1).length+1:col+raw.length};};
+ const add=(kind,text,length=text.length)=>out.push({kind,text,...position(length),u:kind==='id'?text.toUpperCase():kind==='op'?text:undefined});
+ const advance=s=>{for(let i=0;i<s.length;i++){if(s[i]==='\n'){line++;col=1;}else col++;}p+=s.length;};
+ const invalidLiteral=(raw)=>{throw new SclError('Nieprawidłowy literał liczbowy: '+raw,position(Math.max(1,raw.length)));};
+ const boundary=raw=>{const after=source.slice(p+raw.length);if(/^[\w\u00c0-\u024f#]/.test(after)||(after[0]==='.'&&!after.startsWith('..')))invalidLiteral(raw+after[0]);};
+ const numeric=raw=>{const parts=raw.split('#'),typed=parts.length>1&&!/^(2|8|16)$/.test(parts[0]);const type=typed?parts.shift().toUpperCase():null;
+  if(type==='BOOL'){if(!/^(TRUE|FALSE)$/i.test(parts[0]))invalidLiteral(raw);return;}
+  if(parts.length===2){const patterns={2:/^[01](?:_?[01])*$/,8:/^[0-7](?:_?[0-7])*$/,16:/^[0-9a-f](?:_?[0-9a-f])*$/i};if(!patterns[parts[0]]?.test(parts[1]))invalidLiteral(raw);}
+  else{const value=parts[0];if(!/^[+-]?\d(?:_?\d)*(?:\.\d(?:_?\d)*)?(?:[eE][+-]?\d(?:_?\d)*)?$/.test(value)||!Number.isFinite(Number(value.replaceAll('_',''))))invalidLiteral(raw);if(type&&!['REAL','LREAL'].includes(type)&&/[.eE]/.test(value))invalidLiteral(raw);}
+ };
  while(p<source.length){
-  if(out.length>200000)throw new SclError('Program jest zbyt duży.',{line,col});
+  if(out.length>200000)throw new SclError('Program jest zbyt duży.',position());
   const tail=source.slice(p);let m;
   if((m=/^\s+/.exec(tail))){advance(m[0]);continue;}
   if(tail.startsWith('//')){advance(tail.split('\n')[0]);continue;}
-  if(tail.startsWith('(*')||tail.startsWith('/*')){let end=source.indexOf(tail.startsWith('(*')?'*)':'*/',p+2);if(end<0)throw new SclError('Niezamknięty komentarz.',{line,col});advance(source.slice(p,end+2));continue;}
-  if(tail[0]==='{'){let end=source.indexOf('}',p+1);if(end<0)throw new SclError('Niezamknięty atrybut bloku.',{line,col});advance(source.slice(p,end+1));continue;}
+  if(tail.startsWith('(*')||tail.startsWith('/*')){let end=source.indexOf(tail.startsWith('(*')?'*)':'*/',p+2);if(end<0)throw new SclError('Niezamknięty komentarz.',position(2));advance(source.slice(p,end+2));continue;}
+  if(tail[0]==='{'){let end=source.indexOf('}',p+1);if(end<0)throw new SclError('Niezamknięty atrybut bloku.',position());advance(source.slice(p,end+1));continue;}
   if((m=/^(?:LTIME|TIME|LT|T)#[+-]?(?:\d+(?:\.\d+)?(?:ms|us|ns|d|h|m|s))+/i.exec(tail))){add('time',m[0]);advance(m[0]);continue;}
-  if((m=/^(?:BOOL|SINT|INT|DINT|LINT|USINT|UINT|UDINT|ULINT|BYTE|WORD|DWORD|LWORD|REAL|LREAL)#(?:TRUE|FALSE|(?:2|8|16)#[\da-f_]+|[+-]?\d+(?:\.\d+)?)/i.exec(tail))){add('typed',m[0]);advance(m[0]);continue;}
-  if((m=/^(?:2|8|16)#[\da-f_]+/i.exec(tail))){add('base',m[0]);advance(m[0]);continue;}
+  const typedPrefix=/^(?:BOOL|SINT|INT|DINT|LINT|USINT|UINT|UDINT|ULINT|BYTE|WORD|DWORD|LWORD|REAL|LREAL)#/i.exec(tail);
+  if(typedPrefix){const value=/^(?:TRUE|FALSE|(?:2|8|16)#[0-9a-z_]*|[+-]?\d[\d_]*(?:\.(?!\.)\d[\d_]*)?(?:[eE][+-]?\d[\d_]*)?)/i.exec(tail.slice(typedPrefix[0].length));if(!value)invalidLiteral(typedPrefix[0]);const raw=typedPrefix[0]+value[0];boundary(raw);numeric(raw);add('typed',raw);advance(raw);continue;}
+  if((m=/^(?:2|8|16)#[0-9a-z_]*/i.exec(tail))){boundary(m[0]);numeric(m[0]);add('base',m[0]);advance(m[0]);continue;}
   if(tail[0]==='"'||tail[0]==="'"){
    const q=tail[0];let i=1,text='';let closed=false;
    while(i<tail.length){if(tail[i]===q){if(tail[i+1]===q){text+=q;i+=2;continue;}i++;closed=true;break;}if(tail[i]==='$'&&i+1<tail.length){text+=tail[i+1];i+=2;}else text+=tail[i++];}
-   if(!closed)throw new SclError('Niezamknięty tekst lub symbol.',{line,col});add(q==='"'?'global':'string',text);advance(tail.slice(0,i));continue;
+   if(!closed)throw new SclError('Niezamknięty tekst lub symbol.',position());add(q==='"'?'global':'string',text,i);advance(tail.slice(0,i));continue;
   }
   if((m=/^(?:REGION\b[^\n]*|END_REGION\b[ \t]*;?)/i.exec(tail))){advance(m[0]);continue;}
   if((m=/^#?[A-Za-z_\u00c0-\u024f][\w\u00c0-\u024f]*/.exec(tail))){add('id',m[0]);advance(m[0]);continue;}
-  if((m=/^\d[\d_]*(?:\.(?!\.)\d+)?(?:[eE][+-]?\d+)?/.exec(tail))){add('number',m[0]);advance(m[0]);continue;}
+  if((m=/^\d[\d_]*(?:\.(?!\.)\d[\d_]*)?(?:[eE][+-]?\d[\d_]*)?/.exec(tail))){boundary(m[0]);numeric(m[0]);add('number',m[0]);advance(m[0]);continue;}
   if((m=/^(?::=|=>|<>|<=|>=|\.\.\.|\.\.|\*\*|[+\-*/=<>()[\],;:.])/.exec(tail))){add('op',m[0]);advance(m[0]);continue;}
-  throw new SclError('Nieobsługiwany znak: '+tail[0],{line,col});
+  throw new SclError('Nieobsługiwany znak: '+String.fromCodePoint(tail.codePointAt(0)),position(String.fromCodePoint(tail.codePointAt(0)).length));
  }
- out.push({kind:'eof',text:'EOF',u:'EOF',line,col});return out;
+ out.push({kind:'eof',text:'EOF',u:'EOF',...position(0)});return out;
 }
 function timeValue(s){let v=0;const sign=s.includes('#-')?-1:1;const units={d:86400000,h:3600000,m:60000,s:1000,ms:1,us:.001,ns:.000001};for(const m of s.matchAll(/(\d+(?:\.\d+)?)(ms|us|ns|d|h|m|s)/gi))v+=Number(m[1])*units[m[2].toLowerCase()];return sign*v;}
 const lit=(v,t='DINT',tok={})=>({k:'lit',v,t,tok});
 const powers={OR:1,XOR:2,AND:3,'=':4,'<>':4,'<':4,'>':4,'<=':4,'>=':4,'+':5,'-':5,'*':6,'/':6,MOD:6,DIV:6,'**':7};
 export class Parser {
- constructor(source){this.tokens=lex(source);this.i=0;this.decls=[];this.name='Program';this.returnType=null;this.depth=0;}
- peek(n=0){return this.tokens[this.i+n]||this.tokens.at(-1);} is(x){return this.peek().u===x;} next(){return this.tokens[this.i++];}
+ constructor(source){this.tokens=lex(source);this.i=0;this.decls=[];this.name='Program';this.returnType=null;this.depth=0;this.expressionDepth=0;this.typeDepth=0;this.expressionHeights=new WeakMap();}
+ peek(n=0){return this.tokens[this.i+n]||this.tokens.at(-1);} is(x){return this.peek().u===x;} next(){const t=this.peek();this.i=Math.min(this.i+1,this.tokens.length);return t;}
  eat(x){if(this.is(x)){return this.next();}return null;}
  need(x){if(!this.is(x))throw new SclError('Oczekiwano '+x+', znaleziono '+this.peek().text,this.peek());return this.next();}
- ident(){let t=this.next();if(!['id','global'].includes(t.kind))throw new SclError('Oczekiwano nazwy zmiennej.',t);safeKey(t.text.replace(/^#/,''));return t;}
- signed(){let sign=this.eat('-')?-1:1;this.eat('+');let t=this.next();if(t.kind!=='number'||!Number.isInteger(Number(t.text)))throw new SclError('Granica tablicy musi być liczbą całkowitą.',t);return sign*Number(t.text);}
- type(){let t=this.next(),u=t.text.toUpperCase();
+ ident(){let t=this.next();if(!['id','global'].includes(t.kind))throw new SclError('Oczekiwano nazwy zmiennej.',t);safeKey(t.text.replace(/^#/,''),t);return t;}
+ signed(){let sign=this.eat('-')?-1:1;if(sign===1)this.eat('+');let t=this.next();if(t.kind!=='number'||!Number.isSafeInteger(Number(t.text.replaceAll('_',''))))throw new SclError('Granica tablicy musi być liczbą całkowitą w bezpiecznym zakresie symulatora.',t);return sign*Number(t.text.replaceAll('_',''));}
+ type(){if(++this.typeDepth>80){this.typeDepth--;throw new SclError('Zbyt głębokie zagnieżdżenie typu.',this.peek());}try{return this.parseType();}finally{this.typeDepth--;}}
+ parseType(){let t=this.next(),u=t.text.toUpperCase();
   if(u==='ARRAY'){this.need('[');let dims=[];do{let lo=this.signed();this.need('..');let hi=this.signed();if(hi<lo||hi-lo>10000)throw new SclError('Nieprawidłowy zakres tablicy.',t);dims.push([lo,hi]);}while(this.eat(','));this.need(']');this.need('OF');if(dims.reduce((n,[a,b])=>n*(b-a+1),1)>10000)throw new SclError('Tablica może mieć najwyżej 10 000 elementów.',t);return {kind:'array',dims,of:this.type()};}
   if(u==='STRUCT'){let fields=this.declarationList('field','END_STRUCT');this.need('END_STRUCT');return {kind:'struct',fields};}
   if(u==='STRING'&&this.eat('[')){let n=this.signed();this.need(']');return {kind:'scalar',name:u,length:n};}
@@ -62,20 +75,21 @@ export class Parser {
   }return list;
  }
  parse(){
-  if(this.is('FUNCTION_BLOCK')||this.is('FUNCTION')||this.is('ORGANIZATION_BLOCK')){const kind=this.next().u;this.name=this.ident().text;if(kind==='FUNCTION'){this.need(':');if(!this.eat('VOID'))this.returnType=this.type();}}
+  let blockEnd=null;
+  if(this.is('FUNCTION_BLOCK')||this.is('FUNCTION')||this.is('ORGANIZATION_BLOCK')){const kind=this.next().u;blockEnd={FUNCTION_BLOCK:'END_FUNCTION_BLOCK',FUNCTION:'END_FUNCTION',ORGANIZATION_BLOCK:'END_ORGANIZATION_BLOCK'}[kind];this.name=this.ident().text;if(kind==='FUNCTION'){this.need(':');if(!this.eat('VOID'))this.returnType=this.type();}}
   if(this.eat('VERSION')){this.need(':');this.next();}
-  while(['VAR','VAR_INPUT','VAR_OUTPUT','VAR_IN_OUT','VAR_TEMP','VAR_CONSTANT','VAR_STAT'].includes(this.peek().u)){
+  while(declarationSections.includes(this.peek().u)){
    const section=this.next().u;this.eat('RETAIN');this.eat('NON_RETAIN');this.decls.push(...this.declarationList(section));this.need('END_VAR');this.eat(';');
   }
-  this.eat('BEGIN');const body=this.block(new Set(['END_FUNCTION_BLOCK','END_FUNCTION','END_ORGANIZATION_BLOCK','EOF']));
-  if(!this.is('EOF')){this.next();this.eat(';');}this.need('EOF');
+  if(blockEnd)this.need('BEGIN');else this.eat('BEGIN');const body=this.block(new Set(['END_FUNCTION_BLOCK','END_FUNCTION','END_ORGANIZATION_BLOCK','EOF']));
+  if(blockEnd){this.need(blockEnd);this.eat(';');}else if(!this.is('EOF')){this.next();this.eat(';');}this.need('EOF');
   const seen=new Set();for(const d of this.decls){let key=d.name.toLowerCase();if(seen.has(key))throw new SclError('Zmienna zadeklarowana dwukrotnie: '+d.name,d.tok);seen.add(key);}
   return {body,decls:this.decls,name:this.name,returnType:this.returnType,sourceLines:this.tokens.at(-1).line};
  }
- block(stops){if(++this.depth>80)throw new SclError('Zbyt głębokie zagnieżdżenie.',this.peek());let b=[];while(!stops.has(this.peek().u)&&!this.is('EOF')){if(this.eat(';'))continue;b.push(this.statement());}this.depth--;return b;}
+ block(stops,caseBody=false){if(++this.depth>80){this.depth--;throw new SclError('Zbyt głębokie zagnieżdżenie.',this.peek());}try{let b=[];while(!stops.has(this.peek().u)&&!this.is('EOF')&&(!caseBody||!this.caseLabelAhead())){if(this.eat(';'))continue;b.push(this.statement());}return b;}finally{this.depth--;}}
  statement(){let t=this.peek(),u=t.u;
   if(u==='IF'){this.next();const branches=[];let c=this.expression();this.need('THEN');branches.push({c,b:this.block(new Set(['ELSIF','ELSE','END_IF']))});while(this.eat('ELSIF')){c=this.expression();this.need('THEN');branches.push({c,b:this.block(new Set(['ELSIF','ELSE','END_IF']))});}let other=[];if(this.eat('ELSE'))other=this.block(new Set(['END_IF']));this.need('END_IF');this.need(';');return {k:'if',branches,other,tok:t};}
-  if(u==='CASE'){this.next();let value=this.expression();this.need('OF');let cases=[];while(!this.is('END_CASE')&&!this.is('ELSE')&&!this.is('EOF')){let labels=[];do{let lo=this.expression(5),hi=lo;if(this.eat('..')||this.eat('...'))hi=this.expression(5);labels.push([lo,hi]);}while(this.eat(','));this.need(':');let b=[];while(!this.is('ELSE')&&!this.is('END_CASE')&&!this.is('EOF')&&!this.caseLabelAhead()){if(this.eat(';'))continue;b.push(this.statement());}cases.push({labels,b});}let other=[];if(this.eat('ELSE'))other=this.block(new Set(['END_CASE']));this.need('END_CASE');this.need(';');return {k:'case',value,cases,other,tok:t};}
+  if(u==='CASE'){this.next();let value=this.expression();this.need('OF');let cases=[];while(!this.is('END_CASE')&&!this.is('ELSE')&&!this.is('EOF')){const labels=this.caseLabels();this.need(':');const b=this.block(new Set(['ELSE','END_CASE']),true);cases.push({labels,b});}let other=[];if(this.eat('ELSE'))other=this.block(new Set(['END_CASE']));this.need('END_CASE');this.need(';');return {k:'case',value,cases,other,tok:t};}
   if(u==='FOR'){this.next();const target=this.reference();this.need(':=');let lo=this.expression();this.need('TO');let hi=this.expression();let by=lit(1);if(this.eat('BY'))by=this.expression();this.need('DO');let b=this.block(new Set(['END_FOR']));this.need('END_FOR');this.need(';');return {k:'for',target,lo,hi,by,b,tok:t};}
   if(u==='WHILE'){this.next();let c=this.expression();this.need('DO');let b=this.block(new Set(['END_WHILE']));this.need('END_WHILE');this.need(';');return {k:'while',c,b,tok:t};}
   if(u==='REPEAT'){this.next();let b=this.block(new Set(['UNTIL']));this.need('UNTIL');let c=this.expression();this.need('END_REPEAT');this.need(';');return {k:'repeat',c,b,tok:t};}
@@ -85,21 +99,24 @@ export class Parser {
   if(this.is('(')){const args=this.arguments();this.need(';');return {k:'call',target,args,tok:t};}
   throw new SclError('Oczekiwano przypisania := lub wywołania bloku.',this.peek());
  }
- caseLabelAhead(){let n=this.i;while(n<this.tokens.length&&n<this.i+30){let t=this.tokens[n];if(t.u===':')return true;if([';',':=','(','END_CASE','ELSE','IF','FOR'].includes(t.u))return false;n++;}return false;}
+ caseLabels(){const labels=[];do{let lo=this.expression(5),hi=lo;if(this.eat('..')||this.eat('...'))hi=this.expression(5);labels.push([lo,hi]);}while(this.eat(','));return labels;}
+ caseLabelAhead(){const saved=this.i;try{this.caseLabels();return this.is(':');}catch(error){if(!(error instanceof SclError))throw error;return false;}finally{this.i=saved;}}
  reference(){const t=this.ident();let path=[];while(true){if(this.eat('.'))path.push({field:this.ident().text});else if(this.eat('[')){const indices=[this.expression()];while(this.eat(','))indices.push(this.expression());this.need(']');path.push({indices});}else break;}return {k:'ref',root:t.text.replace(/^#/,''),global:t.kind==='global',path,tok:t};}
  arguments(){this.need('(');let args=[];if(!this.is(')'))do{let name=null,out=false;if(this.peek().kind==='id'&&[':=','=>'].includes(this.peek(1).u)){name=this.next().text;out=this.next().u==='=>';}const value=this.expression();args.push({name,out,value});}while(this.eat(','));this.need(')');return args;}
- expression(min=0){let t=this.peek(),left;
+ expression(min=0){if(++this.expressionDepth>120){this.expressionDepth--;throw new SclError('Zbyt głębokie zagnieżdżenie wyrażenia.',this.peek());}try{return this.parseExpression(min);}finally{this.expressionDepth--;}}
+ boundExpression(e){let children=[];if(e.k==='binary')children=[e.a,e.b];else if(e.k==='unary')children=[e.a];else if(e.k==='func')children=e.args.map(a=>a.value);else if(e.k==='ref')children=e.path.flatMap(s=>s.indices||[]);const height=1+children.reduce((max,c)=>Math.max(max,this.expressionHeights.get(c)||1),0);if(height>120)throw new SclError('Zbyt głębokie zagnieżdżenie wyrażenia.',e.tok);this.expressionHeights.set(e,height);return e;}
+ parseExpression(min=0){let t=this.peek(),left;
   if(this.eat('NOT')||this.eat('-')||this.eat('+'))left={k:'unary',op:t.u,a:this.expression(7),tok:t};
   else if(this.eat('(')){left=this.expression();this.need(')');}
   else if(t.kind==='number'){this.next();left=lit(Number(t.text.replaceAll('_','')),/[.eE]/.test(t.text)?'REAL':'DINT',t);}
   else if(t.kind==='time'){this.next();left=lit(timeValue(t.text),'TIME',t);}
   else if(t.kind==='base'){this.next();let [base,n]=t.text.split('#');left=lit(parseInt(n.replaceAll('_',''),Number(base)),'DINT',t);}
-  else if(t.kind==='typed'){this.next();let [typ,...tail]=t.text.split('#');let s=tail.join('#'),v=/^(TRUE|FALSE)$/i.test(s)?s.toUpperCase()==='TRUE':s.includes('#')?parseInt(s.split('#')[1].replaceAll('_',''),Number(s.split('#')[0])):Number(s);left=lit(v,typ.toUpperCase(),t);}
+  else if(t.kind==='typed'){this.next();let [typ,...tail]=t.text.split('#');let s=tail.join('#'),v=/^(TRUE|FALSE)$/i.test(s)?s.toUpperCase()==='TRUE':s.includes('#')?parseInt(s.split('#')[1].replaceAll('_',''),Number(s.split('#')[0])):Number(s.replaceAll('_',''));left=lit(v,typ.toUpperCase(),t);}
   else if(t.kind==='string'){this.next();left=lit(t.text,'STRING',t);}
   else if(this.eat('TRUE')||this.eat('FALSE'))left=lit(t.u==='TRUE','BOOL',t);
   else if(t.kind==='id'||t.kind==='global'){left=this.reference();if(this.is('('))left={k:'func',target:left,args:this.arguments(),tok:t};}
   else throw new SclError('Oczekiwano wyrażenia, znaleziono '+t.text,t);
-  while(own(powers,this.peek().u)&&powers[this.peek().u]>=min){let op=this.next();const p=powers[op.u];const right=this.expression(p+(op.u==='**'?0:1));left={k:'binary',op:op.u,a:left,b:right,tok:op};}return left;
+  this.boundExpression(left);while(own(powers,this.peek().u)&&powers[this.peek().u]>=min){let op=this.next();const p=powers[op.u];const right=this.expression(p+(op.u==='**'?0:1));left=this.boundExpression({k:'binary',op:op.u,a:left,b:right,tok:op});}return left;
  }
 }
 export const scalar=name=>({kind:'scalar',name});

@@ -1,0 +1,171 @@
+// TEST SCL LAB: Start = impuls, Stop/Reset = FALSE, Tryb = 1.
+// Wyniki: FOR=55, WHILE=15, REPEAT=10, CASE=80, Gotowe=TRUE.
+// Po zakonczeniu: impuls Reset, nastepnie nowy impuls Start.
+// Reset/Stop zeruja sekwencje; wyniki pozostaja do porownania.
+FUNCTION_BLOCK "FB_TestSCL"
+VAR_INPUT
+    Start : Bool;
+    Stop : Bool;
+    Reset : Bool;
+    Tryb : Int := 1;
+    WartoscTestowa : Int := 7;
+    CzasOczekiwania : Time := T#500ms;
+END_VAR
+VAR_OUTPUT
+    Krok : Int;
+    Zajety : Bool;
+    Gotowe : Bool;
+    SumaFOR : Int;
+    SumaWHILE : Int;
+    SumaREPEAT : Int;
+    Parzyste : Int;
+    SumaBY : Int;
+    SumaExitContinue : Int;
+    OcenaIF : Int;
+    WynikCASE : Int;
+    WynikREAL : Real;
+    Znormalizowana : Real;
+    Przeskalowana : Int;
+    Tekst : String[30];
+    PozycjaTekstu : Int;
+    Bity : Word;
+    CzasET : Time;
+END_VAR
+VAR
+    PamiecStart : Bool;
+    Opoznienie : TON_TIME;
+    Dane : Array[1..10] of Struct
+        Liczba : Int;
+        Parzysta : Bool;
+    END_STRUCT;
+END_VAR
+VAR_TEMP
+    ZboczeStart : Bool;
+    i : Int;
+END_VAR
+BEGIN
+    // Start działa na zbocze: FALSE -> TRUE.
+    #ZboczeStart := #Start AND NOT #PamiecStart;
+    #PamiecStart := #Start;
+
+    IF #Reset OR #Stop THEN
+        #Krok := 0;
+        #Gotowe := FALSE;
+    END_IF;
+
+    // Timer wywoływany w każdym cyklu PLC.
+    #Opoznienie(IN := (#Krok = 20), PT := #CzasOczekiwania);
+    #CzasET := #Opoznienie.ET;
+
+    IF NOT #Reset AND NOT #Stop THEN
+        CASE #Krok OF
+            0:
+                IF #ZboczeStart THEN
+                    #Gotowe := FALSE;
+                    #Krok := 10;
+                END_IF;
+
+            10:
+                // FOR, tablica struktur i IF wewnątrz pętli.
+                #SumaFOR := 0;
+                #Parzyste := 0;
+                FOR #i := 1 TO 10 DO
+                    #Dane[#i].Liczba := #i;
+                    #Dane[#i].Parzysta := (#i MOD 2) = 0;
+                    #SumaFOR := #SumaFOR + #Dane[#i].Liczba;
+                    IF #Dane[#i].Parzysta THEN
+                        #Parzyste := #Parzyste + 1;
+                    END_IF;
+                END_FOR;
+
+                // FOR z ujemnym krokiem: 10 + 8 + 6 + 4 + 2 = 30.
+                #SumaBY := 0;
+                FOR #i := 10 TO 2 BY -2 DO
+                    #SumaBY := #SumaBY + #i;
+                END_FOR;
+
+                // CONTINUE pomija 3, EXIT konczy przed 6: suma = 12.
+                #SumaExitContinue := 0;
+                FOR #i := 1 TO 10 DO
+                    IF #i = 3 THEN
+                        CONTINUE;
+                    END_IF;
+                    IF #i > 5 THEN
+                        EXIT;
+                    END_IF;
+                    #SumaExitContinue := #SumaExitContinue + #i;
+                END_FOR;
+
+                // WHILE: suma liczb od 1 do 5.
+                #SumaWHILE := 0;
+                #i := 1;
+                WHILE #i <= 5 DO
+                    #SumaWHILE := #SumaWHILE + #i;
+                    #i := #i + 1;
+                END_WHILE;
+
+                // REPEAT: wykona się przynajmniej raz.
+                #SumaREPEAT := 0;
+                #i := 1;
+                REPEAT
+                    #SumaREPEAT := #SumaREPEAT + #i;
+                    #i := #i + 1;
+                UNTIL #i > 4
+                END_REPEAT;
+
+                // Zmień WartoscTestowa, aby sprawdzić trzy gałęzie.
+                IF #WartoscTestowa > 10 THEN
+                    #OcenaIF := 2;
+                ELSIF #WartoscTestowa > 0 THEN
+                    #OcenaIF := 1;
+                ELSE
+                    #OcenaIF := 0;
+                END_IF;
+
+                #Krok := 20;
+
+            20:
+                // Oczekiwanie przez kilka cykli PLC.
+                IF #Opoznienie.Q THEN
+                    #Krok := 30;
+                END_IF;
+
+            30:
+                #Krok := 40;
+
+            40:
+                #Gotowe := TRUE;
+
+            ELSE
+                #Krok := 0;
+                #Gotowe := FALSE;
+        END_CASE;
+    END_IF;
+
+    IF (#Krok = 40) AND NOT #Gotowe THEN
+        // CASE z gałęzią domyślną.
+        CASE #Tryb OF
+            1:
+                #WynikCASE := #SumaFOR + #SumaWHILE + #SumaREPEAT;
+            2:
+                #WynikCASE := #SumaFOR * 2;
+            3:
+                #WynikCASE := #SumaFOR - #SumaREPEAT;
+            ELSE
+                #WynikCASE := -1;
+        END_CASE;
+
+        // Konwersja i obliczenia REAL.
+        #WynikREAL := INT_TO_REAL(#SumaFOR) / 2.0;
+        #Znormalizowana := NORM_X(MIN := 0, VALUE := 50, MAX := 100);
+        #Przeskalowana := SCALE_X(MIN := 0, VALUE := #Znormalizowana, MAX := 100);
+
+        // Funkcje tekstowe i operacje bitowe.
+        #Tekst := CONCAT(LEFT('ABCDE', 3), '-OK');
+        #PozycjaTekstu := FIND(#Tekst, 'OK');
+        #Bity := SHL(IN := WORD#1, N := 4);
+
+    END_IF;
+
+    #Zajety := (#Krok = 10) OR (#Krok = 20) OR (#Krok = 30);
+END_FUNCTION_BLOCK
