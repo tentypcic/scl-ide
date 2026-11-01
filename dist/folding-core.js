@@ -1,4 +1,5 @@
-const kinds = new Set(['IF', 'FOR', 'WHILE', 'REPEAT', 'CASE', 'REGION']);
+import {declarationSections} from './language-catalog.js';
+const kinds = new Set(['IF', 'FOR', 'WHILE', 'REPEAT', 'CASE', 'REGION', 'STRUCT', ...declarationSections]);
 export function lineStarts(source) {
   const starts = [0];
   for (let i = 0; i < source.length; i++) if (source[i] === '\n') starts.push(i + 1);
@@ -38,16 +39,20 @@ export function maskSCL(source) {
 
 export function foldRanges(source) {
   const starts = lineStarts(source), masked = maskSCL(source), stack = [], ranges = [];
-  const tokens = /\b(?:END_REGION|END_REPEAT|END_WHILE|END_CASE|END_FOR|END_IF|REGION|REPEAT|WHILE|CASE|FOR|IF)\b/gi;
+  const tokens = /\b(?:END_REGION|END_REPEAT|END_WHILE|END_CASE|END_FOR|END_IF|END_VAR|END_STRUCT|VAR_INPUT|VAR_OUTPUT|VAR_IN_OUT|VAR_TEMP|VAR_CONSTANT|VAR_STAT|VAR|STRUCT|REGION|REPEAT|WHILE|CASE|FOR|IF)\b/gi;
   let regionTitleEnd = -1;
   for (const token of masked.matchAll(tokens)) {
     if (token.index < regionTitleEnd || /[#.\w]/.test(masked[token.index - 1] || ' ')) continue;
     const name = token[0].toUpperCase(), line = floorIndex(starts, token.index) + 1;
     if (name === 'REGION') {const eol = source.indexOf('\n', token.index); regionTitleEnd = eol < 0 ? source.length : eol;}
-    if (kinds.has(name)) {stack.push({kind: name, start: line, from: token.index}); continue;}
+    if (kinds.has(name)) {
+      const inDeclaration = stack.some(r => declarationSections.includes(r.kind) || r.kind === 'STRUCT');
+      if (inDeclaration && ['IF', 'FOR', 'WHILE', 'REPEAT', 'CASE'].includes(name)) continue;
+      stack.push({kind: name, start: line, from: token.index}); continue;
+    }
     const kind = name.slice(4), top = stack.at(-1);
     // Do not invent crossed ranges when the user is still typing END_*.
-    if (!top || top.kind !== kind) continue;
+    if (!top || (kind === 'VAR' ? !declarationSections.includes(top.kind) : top.kind !== kind)) continue;
     stack.pop();
     if (line > top.start) ranges.push({...top, end: line, to: token.index + token[0].length, key: top.kind + ':' + top.from});
   }

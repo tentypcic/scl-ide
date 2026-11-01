@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {FoldDocument, foldRanges, maskSCL} from '../dist/folding-core.js';
 import {compile} from '../dist/engine.js';
+import {declarationSections} from '../dist/language-catalog.js';
 
 const nested = 'REGION Main\nIF #a THEN\nFOR #i := 1 TO 2 DO\n#x := #x + 1;\nEND_FOR;\nELSE\n#x := 5;\nEND_IF;\nEND_REGION\n#y := #x;';
 test('nested IF/FOR/REGION ranges are matched independently, with ELSE inside IF', () => {
@@ -53,4 +54,16 @@ test('replacement at a folded EOF includes hidden body only when the header is s
   const source = 'IF #a THEN\n#x:=1;\nEND_IF;', d = new FoldDocument(source); d.foldAll();
   d.editView('IF #a THE'); assert.equal(d.source, source.replace('THEN', 'THE'));
   const all = new FoldDocument(source); all.foldAll(); all.editView('replacement'); assert.equal(all.source, 'replacement');
+});
+test('every VAR section folds up to its own END_VAR with its original section label',()=>{
+  for(const section of declarationSections){const text=section+'\nValue : INT;\nEND_VAR\nBEGIN\n#Value:=1;',d=new FoldDocument(text);assert.equal(d.rangeAt(1).kind,section);d.toggle(1);assert.deepEqual(d.visibleLines,[1,4,5]);assert.equal(d.source,text);}
+});
+test('nested STRUCT fields do not prematurely close VAR or create control-flow folds',()=>{
+  const source='VAR\nData : ARRAY[1..2] OF STRUCT\n    IF : BOOL;\n    Inner : STRUCT\n        x : INT;\n    END_STRUCT;\nEND_STRUCT;\nEND_VAR\nBEGIN';
+  const d=new FoldDocument(source);assert.deepEqual(d.ranges.map(r=>[r.kind,r.start,r.end]),[['VAR',1,8],['STRUCT',2,7],['STRUCT',4,6]]);
+  d.toggle(2);assert.deepEqual(d.visibleLines,[1,2,8,9]);d.toggle(1);assert.deepEqual(d.visibleLines,[1,9]);d.revealLine(5);assert.equal(d.rowForLine(5),4);
+});
+test('folded declarations remain available to compilation and visible body editing',()=>{
+  const source='VAR\nx : INT;\nData : STRUCT\ny : INT;\nEND_STRUCT;\nEND_VAR\nBEGIN\n#Data.y:=4;\n#x:=#Data.y+2;',d=new FoldDocument(source);d.foldAll();d.editView(d.view.replace('+2','+3'));
+  const m=compile(d.source);m.scan();assert.equal(m.locals.x,7);assert.match(d.source,/y : INT/);
 });
