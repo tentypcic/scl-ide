@@ -9,7 +9,7 @@ const record = value => value !== null && typeof value === 'object' && !Array.is
 
 export function validateProject(value) {
   if (!record(value) || ![1, 2, 3].includes(value.version) || typeof value.code !== 'string') {
-    throw Error('To nie jest plik projektu SCL Lab.');
+    throw Error('To nie jest plik projektu SCL IDE.');
   }
   for (const key of ['drafts', 'projectFiles']) {
     if (value[key] !== undefined && (!record(value[key]) || Object.values(value[key]).some(x => typeof x !== 'string'))) {
