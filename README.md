@@ -79,7 +79,7 @@ Every development milestone starts from an independent source checkpoint, uses a
 npm test
 ```
 
-The current suite passes **100 tests**, including workspace panel transitions, settings persistence and import validation. Coverage checks exercise completion templates against all 63 executable functions, all 29 accepted types and all seven declaration sections. GitHub Actions runs the suite on feature/fix pushes and pull requests. Tests cover the implemented interpreter, assistance, formatter, debugger, project history and folded editing; they do not establish complete Siemens compatibility. See [the baseline](docs/BASELINE.md), [M1 validation](docs/M1-HISTORY.md) and [folding validation](docs/CODE-FOLDING.md).
+The current suite passes **132 tests**, including workspace transitions, persistence, import validation, 23 parser audit regressions and 9 live-control regressions. Coverage checks exercise completion templates against all 63 executable functions, all 29 accepted types and all seven declaration sections. GitHub Actions runs the suite on feature/fix pushes and pull requests. Tests cover the implemented interpreter, assistance, formatter, debugger, project history and folded editing; they do not establish complete Siemens compatibility. See [the baseline](docs/BASELINE.md), [M1 validation](docs/M1-HISTORY.md), [folding validation](docs/CODE-FOLDING.md), [the parser audit](docs/M2-PARSER-AUDIT.md) and [live input validation](docs/LIVE-INPUT-FIX.md).
 
 Current limits include one executed block / instance; no user FC/FB calls or project UDT resolver; no hardware, Motion Control, communication, safety instructions or full Siemens numeric semantics. Timers use simulation time. TIA Portal / PLCSIM remain the reference for exported SCL.
 
