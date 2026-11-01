@@ -17,7 +17,7 @@ function apply(){
  for(const el of document.querySelectorAll('[data-resize]')){const n=el.dataset.resize;el.setAttribute('aria-valuemin',n==='bottom'?160:n==='sidebar'?160:240);el.setAttribute('aria-valuemax',n==='bottom'?600:n==='sidebar'?360:520);el.setAttribute('aria-valuenow',settings[n==='bottom'?'bottomHeight':n+'Width']);}
  window.dispatchEvent(new Event('scl-layout'));save();
 }
-function toggle(name){focus=false;settings[name]=!settings[name];apply();}
+function toggle(name){const wasFocus=focus;focus=false;settings[name]=wasFocus?true:!settings[name];apply();}
 $('#toggleSidebar').onclick=()=>toggle('sidebar');$('#toggleInspector').onclick=()=>toggle('inspector');$('#toggleBottom').onclick=()=>toggle('bottom');$('#collapsePanel').onclick=()=>toggle('bottom');$('#focusMode').onclick=()=>{focus=!focus;apply();};$('#fontSelect').onchange=()=>{settings.font=Number($('#fontSelect').value);apply();};
 window.addEventListener('scl-open-panel',()=>{focus=false;settings.bottom=true;apply();});
 document.addEventListener('keydown',e=>{if(document.querySelector('dialog[open]'))return;if((e.ctrlKey||e.metaKey)&&['b','j'].includes(e.key.toLowerCase())){e.preventDefault();toggle(e.key.toLowerCase()==='b'?'sidebar':'bottom');}if(e.key==='F8'){e.preventDefault();focus=!focus;apply();}});

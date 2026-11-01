@@ -1,6 +1,6 @@
 # Architecture — SCL first
 
-Status: target architecture, with an incremental path from the working v5 baseline. Initial implementation: project history only. No parser or editor rewrite is included in M1.
+Status: target architecture, with an incremental path from the working v5 baseline. Project history, structural folding, workspace cleanup and the M2 parser audit are implemented. The language-service facade and multi-file semantic model remain planned. No parser/editor rewrite was performed.
 
 ```mermaid
 flowchart TD
@@ -20,7 +20,7 @@ flowchart TD
 | Workspace | Files, open program, settings, history, import/export | Currently `app.js`; extract storage/history first |
 | Editor adapter | Text, selection, decorations, completion presentation | Existing textarea/highlight editor; evaluate Monaco separately |
 | SCL language service | Diagnostics, completion, hover, definitions, references, formatting | Current assist/formatter behind a future common interface |
-| Parser | Tokens, tolerant syntax tree, exact source ranges | Audit current `Parser`; fix nested CASE before replacement decisions |
+| Parser | Tokens, tolerant syntax tree, exact source ranges | M2 fixes nested CASE, strict block endings and bounded parsing; token ranges available, partial-AST recovery remains M3 |
 | Semantic model | Scopes, declared types, symbols, resolved references | Build independently from runtime values |
 | Runtime adapter | Instance memory, scan, simulated time, instruction budget | Retain `Machine`; no all-at-once rewrite |
 | Debug protocol | Run / pause / next instruction / next scan, samples, breakpoints | Isolate existing generator-based execution from the UI |

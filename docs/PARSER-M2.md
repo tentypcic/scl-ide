@@ -21,3 +21,4 @@ This is the first M2 increment, not completion of the language-service roadmap. 
 
 Before changes, the checkpoint script saved all 30 reconstructed baseline source files, a local snapshot Git bundle and checksums outside the checkout. The local snapshot history is not a clone of upstream history. Upstream baseline is preserved by `backup/pre-parser-m2-2026-11-01`.
 To undo this patch after acceptance, revert its commit; do not reset a shared branch. Application-source backups do not contain browser-local user programs.
+

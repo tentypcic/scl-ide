@@ -1,83 +1,51 @@
-# Automation IDE — SCL Lab
+# SCL IDE
 
-<p align="center">
-  Browser-based <strong>SCL editor + PLC simulator</strong><br />
-  Built with plain <strong>HTML + CSS + JavaScript</strong>, without runtime dependencies.<br />
-  <a href="https://scl-lab-magnesy.tentypcic.chatgpt.site">Open SCL Lab</a> ·
-  <a href="https://github.com/tentypcic/automation-ide/issues">Report Bug</a> ·
-  <a href="docs/ROADMAP.md">Roadmap</a>
-</p>
-
----
+<p align="center"><img src="docs/screenshots/overview.jpg" alt="SCL IDE interface preview" width="900"></p>
+<p align="center">Built with <strong>HTML, CSS and JavaScript</strong>.<br><a href="https://scl-lab-magnesy.tentypcic.chatgpt.site">Open the app</a> · <a href="https://github.com/tentypcic/automation-ide/issues">Report Bug</a></p>
 
 ## 🧠 About The Project
 
-**Automation IDE** grows out of SCL Lab: a browser workspace for writing, analysing and testing Siemens SCL before checking it in TIA Portal.
+**SCL IDE** is a browser workspace for writing, analysing and testing Siemens SCL before checking it in TIA Portal. The repository retains the name **automation-ide**; the app was previously called SCL Lab.
 
-The first goal is a dependable **SCL workflow**: useful suggestions while typing, clear diagnostics, visible values during execution and recoverable project changes. A separate VBScript / WinCC Comfort / Runtime Advanced adapter is planned **after the SCL milestones**.
-
-This is an interpreter for a documented subset of SCL. It does not compile PLC machine code or provide full TIA Portal V20 compatibility.
+This interpreter executes a documented subset. It does not compile PLC machine code or establish full Siemens compatibility. SCL comes first; the WinCC VBScript adapter remains planned.
 
 ## 🛠 Features
 
-- 📁 **Programs** — create, import, export, delete to trash and restore.
-- ✏️ **Editor** — syntax colours, suggestions after one letter, structure members, IF / CASE / FOR snippets, indentation and formatting.
-- ▶️ **Simulation** — cyclic execution, editable inputs, typed variables, arrays, inline structures and simulated timers.
-- 🐞 **Debugger** — instruction / scan stepping, breakpoints, watches, execution-time inline values and signal traces.
-- 💾 **Local project data** — JSON import/export and browser storage.
-
-See [the roadmap](docs/ROADMAP.md) for implementation status and acceptance criteria. Planned items are not an assurance of existing language support.
+- Programs, JSON import/export, recoverable trash and source history with comparison and restore.
+- Syntax highlighting, completion, signatures, snippets, indentation and formatting.
+- Nested IF / CASE / loop / REGION / VAR folding, preserving source through editing, copy and undo.
+- PLC scans, simulated timers, typed variables, arrays and inline structures.
+- Editable inputs during RUN, stepping, breakpoints, watches, inline values and signal traces.
+- Resizable panels, focus mode, keyboard controls and a ready-to-run SCL sample.
+- Source-range diagnostics and parser regressions for nested CASE, literals and block endings.
 
 ## 🚀 Getting Started
 
-Requirements: Node.js 22 or newer for tests; a modern browser and a static HTTP server for the app. There is no package installation or build step.
+Node.js 22+ for tests; Python 3 or another static server for the app. No package installation or build step.
 
 ```sh
-git clone https://github.com/tentypcic/automation-ide.git
-cd automation-ide
 npm test
+python3 -m http.server 8080 --directory dist
 ```
 
-Serve **`dist/`** using a static HTTP server, for example `python3 -m http.server 8080 --directory dist`, then open `http://localhost:8080`. Browser module imports require HTTP; opening the HTML as `file://` is not supported.
-
-1. Create or open an SCL program.
-2. Check the code and set inputs.
-3. Run, or use **F10** for one instruction and **Shift+F10** for one PLC scan.
-4. Download a project JSON to keep a separate copy of your work.
-
-The hosted SCL Lab currently requires its owner's ChatGPT access. A private repository does not make that hosted page public.
-
-## 📂 Project Structure
-
-| Path | Purpose |
-| --- | --- |
-| `dist/app.js` | Workspace UI and simulation controls |
-| `dist/engine.js` | Existing parser and interpreter |
-| `dist/assist-core.js`, `dist/assist.js` | Editor suggestions and snippets |
-| `dist/formatter.js` | SCL indentation |
-| `dist/debug-values.js`, `dist/inline-monitor.js` | Execution samples and inline display |
-| `tests/` | Node.js regression tests |
-| `docs/` | Architecture, milestones, baseline and recovery |
-| `scripts/checkpoint.mjs` | Independent source checkpoint before a change |
+Open `http://localhost:8080`. ES modules require HTTP. Check a program, set inputs and run; **F10** steps an instruction, **Shift+F10** steps a scan. The hosted app currently requires owner access.
 
 ## 💾 Data and Recovery
 
-Programs stay in browser storage for the current origin. They do not sync to GitHub or other devices. Clearing browser data can remove saved programs; download project JSON regularly. GitHub protects **application source**, not the programs written in a user's browser.
+Programs stay in browser storage for the current origin. No device or GitHub sync. Clearing site data can remove them: export project JSON regularly. Git history protects application source, not programs written in the browser. See [development and recovery](docs/DEVELOPMENT.md).
 
-Every development milestone starts from an independent source checkpoint, uses a focused branch, and ends with tests and a reviewable pull request. See [development and recovery](docs/DEVELOPMENT.md).
+## 🧪 Tests and Limits
 
-## 🧪 Tests and Compatibility
+**152 tests pass** in the reconciled source checked on 1 November 2026. The original 44-test baseline is historical. Tests cover interpreter behaviour, parser errors, completion, folding, history, failed writes, live inputs and workspace controls.
 
-```sh
-npm test
-```
+One block/instance executes. User FC/FB calls, project-wide UDT resolution, hardware, Motion Control, communication and safety instructions remain unsupported. Numeric semantics are incomplete; timers use simulation time. The parser stops at its first error. TIA Portal / PLCSIM remain the reference.
 
-The imported Sites v5 baseline passes **44 tests**. Tests cover the implemented interpreter, assistance, formatter and debugger; they do not establish complete Siemens compatibility. See [the baseline](docs/BASELINE.md).
+## 📂 Documentation and Next Steps
 
-Current limits include one executed block / instance; no user FC/FB calls or project UDT resolver; no hardware, Motion Control, communication, safety instructions or full Siemens numeric semantics. Timers use simulation time. TIA Portal / PLCSIM remain the reference for exported SCL.
+[Architecture](docs/ARCHITECTURE.md) · [Roadmap](docs/ROADMAP.md) · [Parser audit](docs/M2-PARSER-AUDIT.md) · [Interface audit](docs/INTERFACE-AUDIT.md)
+
+Next: tolerant language services, symbols/types and project DB/UDT definitions. Editor migration and VBScript remain separate milestones.
 
 ## 🧑‍💻 Author
 
-Created by [tentypcic](https://github.com/tentypcic).
-
-This repository is private while the initial architecture and SCL milestones are being developed. No open-source licence is granted at this stage.
+Created by [tentypcic](https://github.com/tentypcic). Private repository; no open-source licence is granted.
