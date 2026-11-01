@@ -1,7 +1,7 @@
 # SCL IDE
 
 <p align="center"><img src="docs/screenshots/overview.jpg" alt="SCL IDE interface preview" width="900"></p>
-<p align="center">Built with <strong>HTML, CSS and JavaScript</strong>.<br><a href="https://scl-lab-magnesy.tentypcic.chatgpt.site">Open the app</a> · <a href="https://github.com/tentypcic/automation-ide/issues">Report Bug</a></p>
+<p align="center">Built with <strong>HTML, CSS and JavaScript</strong>.<br><a href="https://scl-ide.tentypcic.chatgpt.site">Open the app</a> · <a href="https://github.com/tentypcic/automation-ide/issues">Report Bug</a></p>
 
 ## 🧠 About The Project
 
@@ -28,11 +28,11 @@ npm test
 python3 -m http.server 8080 --directory dist
 ```
 
-Open `http://localhost:8080`. ES modules require HTTP. Check a program, set inputs and run; **F10** steps an instruction, **Shift+F10** steps a scan. The hosted app currently requires owner access.
+Open `http://localhost:8080`. ES modules require HTTP. Check a program, set inputs and run; **F10** steps an instruction, **Shift+F10** steps a scan. The hosted app is publicly accessible.
 
 ## 💾 Data and Recovery
 
-Programs stay in browser storage for the current origin. No device or GitHub sync. Clearing site data can remove them: export project JSON regularly. Git history protects application source, not programs written in the browser. See [development and recovery](docs/DEVELOPMENT.md).
+Programs stay in browser storage for the current origin. No device or GitHub sync. Clearing site data can remove them: export project JSON regularly. Git history protects application source, not programs written in the browser. The renamed Site uses a new origin: browser programs from the former URL are not automatically transferred; keep a project JSON backup. See [development and recovery](docs/DEVELOPMENT.md).
 
 ## 🧪 Tests and Limits
 
