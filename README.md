@@ -1,11 +1,11 @@
 # SCL IDE
 
 <p align="center"><img src="docs/screenshots/overview.jpg" alt="SCL IDE interface preview" width="900"></p>
-<p align="center">Built with <strong>HTML, CSS and JavaScript</strong>.<br><a href="https://scl-ide.tentypcic.chatgpt.site">Open the app</a> · <a href="https://github.com/tentypcic/automation-ide/issues">Report Bug</a></p>
+<p align="center">Built with <strong>HTML, CSS and JavaScript</strong>.<br><a href="https://tentypcic.github.io/scl-ide/">Open the app</a> · <a href="https://github.com/tentypcic/scl-ide/issues">Report Bug</a></p>
 
 ## 🧠 About The Project
 
-**SCL IDE** is a browser workspace for writing, analysing and testing Siemens SCL before checking it in TIA Portal. The repository retains the name **automation-ide**; the app was previously called SCL Lab.
+**SCL IDE** is a browser workspace for writing, analysing and testing Siemens SCL before checking it in TIA Portal. The repository is named **scl-ide**; the app was previously called SCL Lab.
 
 This interpreter executes a documented subset. It does not compile PLC machine code or establish full Siemens compatibility. SCL comes first; the WinCC VBScript adapter remains planned.
 
@@ -32,7 +32,7 @@ Open `http://localhost:8080`. ES modules require HTTP. Check a program, set inpu
 
 ## 💾 Data and Recovery
 
-Programs stay in browser storage for the current origin. No device or GitHub sync. Clearing site data can remove them: export project JSON regularly. Git history protects application source, not programs written in the browser. The renamed Site uses a new origin: browser programs from the former URL are not automatically transferred; keep a project JSON backup. See [development and recovery](docs/DEVELOPMENT.md).
+Programs stay in browser storage for the current origin. No device or GitHub sync. Clearing site data can remove them: export project JSON regularly. Git history protects application source, not programs written in the browser. GitHub Pages uses a different origin from Sites: export project JSON from the old address and import it on Pages to move your programs. See [development and recovery](docs/DEVELOPMENT.md).
 
 ## 🧪 Tests and Limits
 
@@ -48,4 +48,4 @@ Next: tolerant language services, symbols/types and project DB/UDT definitions. 
 
 ## 🧑‍💻 Author
 
-Created by [tentypcic](https://github.com/tentypcic). Private repository; no open-source licence is granted.
+Created by [tentypcic](https://github.com/tentypcic). Public source repository; no open-source licence is granted.
