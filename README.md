@@ -14,9 +14,10 @@ This interpreter executes a documented subset. It does not compile PLC machine c
 - Programs, JSON import/export, recoverable trash and source history with comparison and restore.
 - Syntax highlighting, completion, signatures, snippets, indentation and formatting.
 - Nested IF / CASE / loop / REGION / VAR folding, preserving source through editing, copy and undo.
-- PLC scans, simulated timers, typed variables, arrays and inline structures.
+- PLC scans, simulated timers, typed variables, arrays, inline structures and named UDTs.
 - Editable inputs during RUN, stepping, breakpoints, watches, inline values and signal traces.
 - Resizable panels, focus mode, keyboard controls and a ready-to-run SCL sample.
+- TYPE files shared by programs, nested UDT arrays, field defaults and type/member completion. See [UDT support](docs/UDT.md).
 - Source-range diagnostics and parser regressions for nested CASE, literals and block endings.
 
 ## 🚀 Getting Started
@@ -36,15 +37,15 @@ Programs stay in browser storage for the current origin. No device or GitHub syn
 
 ## 🧪 Tests and Limits
 
-**152 tests pass** in the reconciled source checked on 1 November 2026. The original 44-test baseline is historical. Tests cover interpreter behaviour, parser errors, completion, folding, history, failed writes, live inputs and workspace controls.
+**169 tests pass** in this change, checked on 3 November 2026. The original 44-test baseline is historical. Tests cover interpreter behaviour, parser errors, completion, folding, history, failed writes, live inputs and workspace controls.
 
-One block/instance executes. User FC/FB calls, project-wide UDT resolution, hardware, Motion Control, communication and safety instructions remain unsupported. Numeric semantics are incomplete; timers use simulation time. The parser stops at its first error. TIA Portal / PLCSIM remain the reference.
+One block/instance executes. User FC/FB calls, PLC DB-source resolution, hardware, Motion Control, communication and safety instructions remain unsupported. Numeric semantics are incomplete; timers use simulation time. The parser stops at its first error. TIA Portal / PLCSIM remain the reference.
 
 ## 📂 Documentation and Next Steps
 
 [Architecture](docs/ARCHITECTURE.md) · [Roadmap](docs/ROADMAP.md) · [Parser audit](docs/M2-PARSER-AUDIT.md) · [Interface audit](docs/INTERFACE-AUDIT.md)
 
-Next: tolerant language services, symbols/types and project DB/UDT definitions. Editor migration and VBScript remain separate milestones.
+Named TYPE definitions now resolve from the active source and standalone TYPE files in the workspace. Next: tolerant language services, project DB definitions and custom block calls. Editor migration and VBScript remain separate milestones.
 
 ## 🧑‍💻 Author
 

@@ -1,6 +1,6 @@
 # Architecture — SCL first
 
-Status: target architecture, with an incremental path from the working v5 baseline. Project history, structural folding, workspace cleanup and the M2 parser audit are implemented. The language-service facade and multi-file semantic model remain planned. No parser/editor rewrite was performed.
+Status: target architecture, with an incremental path from the working v5 baseline. Project history, structural folding, workspace cleanup and the M2 parser audit are implemented. Named TYPE/UDT resolution across standalone workspace TYPE files is implemented; the language-service facade, DB definitions and general multi-file semantic model remain planned. No parser/editor rewrite was performed.
 
 ```mermaid
 flowchart TD
@@ -66,6 +66,12 @@ AST and semantic resolution are separate: a parsed member expression is not proo
 - Compare code as plain text using bounded line LCS, with a complete-text fallback for large changed spans. The UI displays at most 2500 rows; the export retains complete sources.
 - Compare-and-write against the last loaded envelope plus storage events detects stale tabs. localStorage does not provide a true multi-tab transaction: two simultaneously writing tabs can race between the read and write. This is best-effort conflict detection, not a multi-user collaboration protocol. Future IndexedDB transactions or Web Locks can strengthen it.
 - Local history and downloaded backups are separate. Never describe localStorage as an independent or cloud backup.
+
+## Named TYPE resolution
+
+`Parser` retains named references and TYPE declarations, then resolves them before `Machine` allocates instance memory. The resolver validates the combined type registry, catches duplicate/cyclic/missing definitions, expands field schemas and evaluates scalar constant field defaults. Runtime paths, timers and scan/debug execution retain the existing interfaces.
+
+The compile API accepts `typeSources: [{id, name, source}]`. The UI supplies other active workspace files; only standalone TYPE documents provide project types, and Trash is excluded. Source files are not concatenated: external diagnostics retain the file identity and original UTF-16 offsets. Completion uses the same resolved schema inventory. This is a bounded resolver, not a general compiler/type checker. See [UDT support](UDT.md).
 
 ## Later SCL milestones
 

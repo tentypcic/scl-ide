@@ -1,0 +1,59 @@
+FUNCTION_BLOCK "St1_WyborBelkiDoPompowania"
+{ S7_Optimized_Access := 'TRUE' }
+VERSION : 1.0
+VAR_INPUT
+    BelkaCisnienie : Array[0..10] of "UDT_BelkaCisnienie";
+    PozycjaWodzika : Real;
+    PozycjeBelek : Array[0..10] of "UDT_WybranaBelka";
+    TolerancjaPozycji : Real := 1.0;
+    ProgNiski : Real := 5.0;
+    ProgKrytyczny : Real := 4.0;
+    CzasFiltra : Time := T#2S;
+    IloscBelek : Int;
+END_VAR
+VAR_OUTPUT
+    NrBelkiDoPompowania : Int;
+END_VAR
+VAR
+    FiltrNiski {InstructionName := 'TON_TIME'; LibVersion := '1.0'} : Array[1..10] of TON_TIME;
+    FiltrKrytyczny {InstructionName := 'TON_TIME'; LibVersion := '1.0'} : Array[1..10] of TON_TIME;
+END_VAR
+VAR_TEMP
+    i : Int;
+    Cisnienie : Real;
+    Odleglosc : Real;
+    NajblizszaNiska : Int;
+    NajblizszaKrytyczna : Int;
+    OdlegloscNiska : Real;
+    OdlegloscKrytyczna : Real;
+END_VAR
+BEGIN
+    #NrBelkiDoPompowania := 0;
+    #NajblizszaNiska := 0;
+    #NajblizszaKrytyczna := 0;
+    #OdlegloscNiska := 0.0;
+    #OdlegloscKrytyczna := 0.0;
+    FOR #i := 1 TO #IloscBelek DO
+        #Cisnienie := #BelkaCisnienie[#i].CzujnikCisnieniaZbiornik;
+        #FiltrNiski[#i].TON(IN := #Cisnienie < #ProgNiski, PT := #CzasFiltra);
+        #FiltrKrytyczny[#i].TON(IN := #Cisnienie < #ProgKrytyczny, PT := #CzasFiltra);
+        #Odleglosc := ABS(#PozycjaWodzika - #PozycjeBelek[#i].Pozycja);
+        IF #FiltrKrytyczny[#i].Q THEN
+            IF (#NajblizszaKrytyczna = 0) OR (#Odleglosc < #OdlegloscKrytyczna) THEN
+                #NajblizszaKrytyczna := #i;
+                #OdlegloscKrytyczna := #Odleglosc;
+            END_IF;
+        END_IF;
+        IF #FiltrNiski[#i].Q AND (#Odleglosc <= ABS(#TolerancjaPozycji)) THEN
+            IF (#NajblizszaNiska = 0) OR (#Odleglosc < #OdlegloscNiska) THEN
+                #NajblizszaNiska := #i;
+                #OdlegloscNiska := #Odleglosc;
+            END_IF;
+        END_IF;
+    END_FOR;
+    IF #NajblizszaKrytyczna <> 0 THEN
+        #NrBelkiDoPompowania := #NajblizszaKrytyczna;
+    ELSE
+        #NrBelkiDoPompowania := #NajblizszaNiska;
+    END_IF;
+END_FUNCTION_BLOCK
