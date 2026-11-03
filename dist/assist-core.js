@@ -1,5 +1,5 @@
 import {standardSignatures} from './standard-functions.js';
-import {Parser,globalsFromJSON,supportedFunctions,supportedTypes,declarationSections,languageKeywords} from './engine.js';
+import {Parser,globalsFromJSON,supportedFunctions,supportedTypes,declarationSections,languageKeywords,resolveProgramTypes} from './engine.js';
 export const snippets=[
  {label:'IF',kind:'szablon',detail:'Warunek IF / THEN',insert:'IF ${1:Warunek} THEN\n    ${2:// kod}\nEND_IF;${0}'},
  {label:'IF ELSE',kind:'szablon',detail:'Dwie gałęzie warunku',insert:'IF ${1:Warunek} THEN\n    ${2:// gdy TRUE}\nELSE\n    ${3:// gdy FALSE}\nEND_IF;${0}'},
@@ -13,6 +13,7 @@ export const snippets=[
  {label:'VAR_INPUT',kind:'szablon',detail:'Deklaracja wejść',insert:'VAR_INPUT\n    ${1:Nazwa} : ${2:Bool};\nEND_VAR${0}'},
  {label:'VAR_OUTPUT',kind:'szablon',detail:'Deklaracja wyjść',insert:'VAR_OUTPUT\n    ${1:Nazwa} : ${2:Bool};\nEND_VAR${0}'},
  {label:'ARRAY',kind:'szablon',detail:'Typ tablicowy z jawnymi granicami',insert:'Array[${1:1}..${2:10}] of ${3:Int}${0}'},
+ {label:'TYPE',kind:'szablon',detail:'Definicja typu UDT; wklej przed blokiem lub w osobnym pliku projektu',insert:'TYPE \"${1:UDT_Nazwa}\"\nVERSION : 1.0\nSTRUCT\n    ${2:Pole} : ${3:REAL};\nEND_STRUCT;\nEND_TYPE${0}'},
  {label:'STRUCT',kind:'szablon',detail:'Struktura danych',insert:'Struct\n    ${1:Pole} : ${2:Bool};\nEND_STRUCT${0}'}
 ];
 // Complete the executable function inventory, rather than a hand-picked subset.
@@ -37,12 +38,22 @@ snippets.push(
 const keywords=languageKeywords.filter(name=>!snippets.some(s=>s.label===name));
 const types=supportedTypes;
 function sectionPrefix(source){const re=/\/\*[\s\S]*?\*\/|\(\*[\s\S]*?\*\)|\/\/[^\n]*|"(?:[^"]|"")*"|'(?:[^']|'')*'|\bBEGIN\b/gi;for(const m of source.matchAll(re))if(m[0].toUpperCase()==='BEGIN')return source.slice(0,m.index);const ends=[...source.matchAll(/\bEND_VAR\b/gi)];if(ends.length){const last=ends.at(-1);return source.slice(0,last.index+last[0].length);}return '';}
-export function collectSymbols(source,machine=null,globalsJSON='{}'){
- let locals={...(machine?.schemas||{})},sections={...(machine?.sections||{})},globals={...(machine?.globals||{})};
- try{const prefix=sectionPrefix(source);if(prefix){const head=new Parser(prefix).peek().u,end={FUNCTION:'END_FUNCTION',ORGANIZATION_BLOCK:'END_ORGANIZATION_BLOCK'}[head]||'END_FUNCTION_BLOCK';const p=new Parser(prefix+'\nBEGIN\n'+end).parse();locals={};sections={};for(const d of p.decls){locals[d.name]=d.type;sections[d.name]=d.section;}if(p.returnType&&!Object.hasOwn(locals,p.name)){locals[p.name]=p.returnType;sections[p.name]='VAR_OUTPUT';}}}catch{}
+export function collectSymbols(source,machine=null,globalsJSON='{}',typeSources=[]){
+ let locals={...(machine?.schemas||{})},sections={...(machine?.sections||{})},globals={...(machine?.globals||{})},types={};
+ // Keep type names available while an incomplete declaration/body is being typed.
+ try{const parser=new Parser(source);parser.definitions();types=resolveProgramTypes({decls:[],body:[],typeDefinitions:parser.typeDefinitions},typeSources).types;}catch{try{types=resolveProgramTypes({decls:[],body:[],typeDefinitions:[]},typeSources).types;}catch{}}
+ let program;
+ try{program=new Parser(source,{typeSources}).parse();}catch{
+  try{const prefix=sectionPrefix(source);if(prefix){const parser=new Parser(prefix);parser.definitions();const end={FUNCTION:'END_FUNCTION',ORGANIZATION_BLOCK:'END_ORGANIZATION_BLOCK',FUNCTION_BLOCK:'END_FUNCTION_BLOCK'}[parser.peek().u]||'';program=new Parser(prefix+'\nBEGIN\n'+end,{typeSources}).parse();}}catch{}
+ }
+ if(program){types=program.types;locals={};sections={};for(const d of program.decls){locals[d.name]=d.type;sections[d.name]=d.section;}if(program.returnType&&!Object.hasOwn(locals,program.name)){locals[program.name]=program.returnType;sections[program.name]='VAR_OUTPUT';}}
  try{globals={...globals,...globalsFromJSON(globalsJSON)};}catch{}
- return {locals,sections,globals};
+ return {locals,sections,globals,types};
 }
+const typeContext=context=>/^\s*[\w\u00c0-\u024f, ]+\s*:\s*(?:ARRAY\s*\[[^\]]*\]\s*OF\s*)?$/i.test(context)||/^\s*FUNCTION\s+(?:"[^"]+"|\w+)\s*:\s*$/i.test(context);
+const quoteType=name=>'"'+name.replaceAll('"','""')+'"';
+const udtItems=symbols=>Object.keys(symbols.types||{}).map(n=>({label:n,insert:quoteType(n),kind:'typ',detail:'Typ UDT z projektu'}));
+
 function textState(s){let state='code';for(let i=0;i<s.length;i++){let a=s[i],b=s[i+1];if(state==='line'){if(a==='\n')state='code';continue;}if(state==='block'){if(a==='*'&&b===')'){state='code';i++;}continue;}if(state==='cblock'){if(a==='*'&&b==='/'){state='code';i++;}continue;}if(state==='single'){if(a==='$'){i++;continue;}if(a==="'"){if(b==="'")i++;else state='code';}continue;}if(state==='double'){if(a==='"'){if(b==='"')i++;else state='code';}continue;}if(a==='/'&&b==='/'){state='line';i++;}else if(a==='/'&&b==='*'){state='cblock';i++;}else if(a==='('&&b==='*'){state='block';i++;}else if(a==="'")state='single';else if(a==='"')state='double';}return state;}
 function memberBase(before,dot){let depth=0,quoted=false,i=dot-1;for(;i>=0;i--){const c=before[i];if(c==='"'){quoted=!quoted;continue;}if(quoted)continue;if(c===']'){depth++;continue;}if(c==='['){depth--;continue;}if(depth===0&&(/[\s;:=()+*/<>-]/.test(c)))break;}return before.slice(i+1,dot);}
 function rootKey(obj,k){return Object.keys(obj).find(x=>x.toLowerCase()===k.toLowerCase());}
@@ -52,14 +63,14 @@ export function suggestions(source,caret,symbols,{manual=false,snippetsOnly=fals
  const before=source.slice(0,caret),state=textState(before);if(state==='code'&&/(?:^|\n)\s*REGION\s+[^\n]*$/i.test(before))return null;if(['line','block','cblock','single'].includes(state)&&!snippetsOnly)return null;
  const member=/\.([A-Za-z_\u00c0-\u024f\d]*)$/.exec(before);let items=[],prefix='',start=caret;
  if(member&&state==='code'){
-  prefix=member[1];start=caret-prefix.length;const type=resolveMemberType(memberBase(before,caret-prefix.length-1),symbols);if(type?.kind==='struct')items=type.fields.map(f=>({label:f.name,insert:f.name,kind:'pole',detail:f.type.name||f.type.kind}));
+  prefix=member[1];start=caret-prefix.length;const type=resolveMemberType(memberBase(before,caret-prefix.length-1),symbols);if(type?.kind==='struct')items=type.fields.map(f=>({label:f.name,insert:f.name,kind:'pole',detail:f.type.udtName||f.type.name||f.type.kind}));
   if(type?.kind==='timer')items=[['Q','Bool'],['ET','Time'],['IN','Bool'],['PT','Time'],...(type.name.includes('TRIG')?[['CLK','Bool']]:[])].map(([name,type])=>({label:name,insert:name,kind:'pole',detail:type}));
   if(type?.kind==='timer'&&!type.name.includes('TRIG')){const modes=type.name==='IEC_TIMER'?['TON','TOF','TP']:[type.name.replace('_TIME','')];items.push(...modes.map(n=>({label:n,kind:'metoda',detail:n+'(IN := BOOL, PT := TIME, Q => BOOL, ET => TIME)',insert:n+'(IN := ${1:FALSE}, PT := ${2:T#1s});${0}',snippet:true})));}
  }else if(state==='double'){
-  const quote=before.lastIndexOf('"');prefix=before.slice(quote+1);start=quote+1;items=Object.keys(symbols.globals).map(n=>({label:n,insert:n+(source[caret]==='"'?'':'"'),kind:'globalna',detail:'Tag lub DB'}));
+  const quote=before.lastIndexOf('"');prefix=before.slice(quote+1);start=quote+1;if(typeContext(before.slice(0,quote).split('\n').at(-1))){items=udtItems(symbols).map(item=>({...item,insert:item.label.replaceAll('"','""')+(source[caret]==='"'?'':'"')}));}else items=Object.keys(symbols.globals).map(n=>({label:n,insert:n+(source[caret]==='"'?'':'"'),kind:'globalna',detail:'Tag lub DB'}));
  }else{
   const match=/(#?[A-Za-z_\u00c0-\u024f][\w\u00c0-\u024f]*|#)$/.exec(before);if(match){prefix=match[1].replace(/^#/,'');start=caret-match[1].length;}else if(!manual&&!snippetsOnly)return null;
-  const hasHash=match?.[1].startsWith('#');const context=source.slice(0,start).split('\n').at(-1);const declarationType=/^\s*[\w\u00c0-\u024f, ]+\s*:\s*(?:ARRAY\s*\[[^\]]*\]\s*OF\s*)?$/i.test(context);const functionType=/^\s*FUNCTION\s+(?:"[^"]+"|\w+)\s*:\s*$/i.test(context);if((declarationType||functionType)&&!hasHash){items=types.map(n=>({label:n,insert:n,kind:'typ',detail:'Typ obsługiwany w SCL Lab'}));items.push(...snippets.filter(s=>['ARRAY','STRUCT'].includes(s.label)).map(s=>({...s,snippet:true})));if(functionType)items.push({label:'VOID',insert:'VOID',kind:'typ',detail:'Funkcja bez wyniku'});const query=prefix.toLowerCase();return {start,end:caret,prefix,items:items.filter(i=>i.label.toLowerCase().startsWith(query))};}if(!snippetsOnly){for(const [n,t]of Object.entries(symbols.locals))items.push({label:'#'+n,match:n,insert:'#'+n,kind:'zmienna',detail:(t.name||t.kind)+' · '+(symbols.sections[n]||'VAR')});if(!hasHash){for(const n of Object.keys(symbols.globals))items.push({label:'"'+n+'"',match:n,insert:'"'+n+'"',kind:'globalna',detail:'Tag lub DB'});for(const n of types)items.push({label:n,insert:n,kind:'typ',detail:'Typ danych SCL'});for(const [n,detail]of Object.entries(signatures))items.push({label:n,insert:functionTemplate(n),kind:'funkcja',detail,snippet:true});for(const n of keywords)items.push({label:n,insert:n,kind:'słowo',detail:'Słowo kluczowe SCL'});}}
+  const hasHash=match?.[1].startsWith('#');const context=source.slice(0,start).split('\n').at(-1);const declarationType=/^\s*[\w\u00c0-\u024f, ]+\s*:\s*(?:ARRAY\s*\[[^\]]*\]\s*OF\s*)?$/i.test(context);const functionType=/^\s*FUNCTION\s+(?:"[^"]+"|\w+)\s*:\s*$/i.test(context);if((declarationType||functionType)&&!hasHash){items=[...types.map(n=>({label:n,insert:n,kind:'typ',detail:'Typ obsługiwany w SCL Lab'})),...udtItems(symbols)];items.push(...snippets.filter(s=>['ARRAY','STRUCT'].includes(s.label)).map(s=>({...s,snippet:true})));if(functionType)items.push({label:'VOID',insert:'VOID',kind:'typ',detail:'Funkcja bez wyniku'});const query=prefix.toLowerCase();return {start,end:caret,prefix,items:items.filter(i=>i.label.toLowerCase().startsWith(query))};}if(!snippetsOnly){for(const [n,t]of Object.entries(symbols.locals))items.push({label:'#'+n,match:n,insert:'#'+n,kind:'zmienna',detail:(t.udtName||t.name||t.kind)+' · '+(symbols.sections[n]||'VAR')});if(!hasHash){for(const n of Object.keys(symbols.globals))items.push({label:'"'+n+'"',match:n,insert:'"'+n+'"',kind:'globalna',detail:'Tag lub DB'});items.push(...udtItems(symbols));for(const n of types)items.push({label:n,insert:n,kind:'typ',detail:'Typ danych SCL'});for(const [n,detail]of Object.entries(signatures))items.push({label:n,insert:functionTemplate(n),kind:'funkcja',detail,snippet:true});for(const n of keywords)items.push({label:n,insert:n,kind:'słowo',detail:'Słowo kluczowe SCL'});}}
   if(!hasHash)items.push(...snippets.map(s=>({...s,snippet:true})));
  }
  const query=prefix.toLowerCase();items=items.filter(i=>(i.match||i.label.replace(/^[#"]/, '')).toLowerCase().startsWith(query));const order={'zmienna':0,'pole':0,'metoda':1,'globalna':1,'szablon':2,'funkcja':3,'typ':4,'słowo':5};items.sort((a,b)=>(order[a.kind]??9)-(order[b.kind]??9)||a.label.localeCompare(b.label));

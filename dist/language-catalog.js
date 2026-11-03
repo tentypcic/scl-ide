@@ -7,7 +7,7 @@ export const supportedTypes = Object.freeze([...primitiveTypes, ...timerTypes, '
 export const languageKeywords = Object.freeze([
   'FUNCTION_BLOCK', 'END_FUNCTION_BLOCK', 'FUNCTION', 'END_FUNCTION', 'ORGANIZATION_BLOCK', 'END_ORGANIZATION_BLOCK',
   'VERSION', ...declarationSections, 'END_VAR', 'RETAIN', 'NON_RETAIN', 'BEGIN', 'VOID',
-  'ARRAY', 'STRUCT', 'END_STRUCT', 'OF', 'IF', 'THEN', 'ELSIF', 'ELSE', 'END_IF', 'CASE', 'END_CASE',
+  'TYPE', 'END_TYPE', 'ARRAY', 'STRUCT', 'END_STRUCT', 'OF', 'IF', 'THEN', 'ELSIF', 'ELSE', 'END_IF', 'CASE', 'END_CASE',
   'FOR', 'TO', 'BY', 'DO', 'END_FOR', 'WHILE', 'END_WHILE', 'REPEAT', 'UNTIL', 'END_REPEAT',
   'EXIT', 'CONTINUE', 'RETURN', 'REGION', 'END_REGION', 'TRUE', 'FALSE', 'AND', 'OR', 'NOT', 'XOR', 'MOD', 'DIV',
 ]);

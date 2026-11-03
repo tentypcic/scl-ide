@@ -38,7 +38,7 @@ test('all current data types are suggested in declarations and accepted by the p
 });
 test('all current grammar keywords are reachable and unsupported block families are absent',()=>{
   for(const name of languageKeywords)assert.ok(completion(name).some(i=>i.label===name),name);
-  for(const name of ['DATA_BLOCK','TYPE','TONR','CTU','MC_Power'])assert.ok(!completion(name).some(i=>i.label===name),name);
+  for(const name of ['DATA_BLOCK','TONR','CTU','MC_Power'])assert.ok(!completion(name).some(i=>i.label===name),name);
 });
 test('REGION works from a partial prefix and expands with a selectable title and closing directive',()=>{
   const item=completion('reg').find(i=>i.label==='REGION');assert.ok(item);

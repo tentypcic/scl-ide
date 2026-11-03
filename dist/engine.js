@@ -4,7 +4,7 @@ export {supportedTypes,declarationSections,languageKeywords} from './language-ca
 import {supportsStandard,callStandard,standardSignatures} from './standard-functions.js';
 /* SCL Lab: bounded, AST-based educational interpreter. No eval or generated JS. */
 export class SclError extends Error {
-  constructor(message, token={line:1,col:1}) { super(message); this.line=token.line||1;this.col=token.col||1;this.name='SclError';this.range=Number.isInteger(token.start)&&Number.isInteger(token.end)?{start:token.start,end:token.end}:null;this.endLine=token.endLine||this.line;this.endCol=token.endCol||this.col; }
+ constructor(message, token={line:1,col:1}) { super(message); this.line=token.line||1;this.col=token.col||1;this.name='SclError';this.range=Number.isInteger(token.start)&&Number.isInteger(token.end)?{start:token.start,end:token.end}:null;this.endLine=token.endLine||this.line;this.endCol=token.endCol||this.col;this.sourceId=token.sourceId;this.sourceName=token.sourceName; }
 }
 const primitive=new Set(primitiveTypes);
 const timers=new Set(timerTypes);
@@ -51,7 +51,7 @@ function timeValue(s){let v=0;const sign=s.includes('#-')?-1:1;const units={d:86
 const lit=(v,t='DINT',tok={})=>({k:'lit',v,t,tok});
 const powers={OR:1,XOR:2,AND:3,'=':4,'<>':4,'<':4,'>':4,'<=':4,'>=':4,'+':5,'-':5,'*':6,'/':6,MOD:6,DIV:6,'**':7};
 export class Parser {
- constructor(source){this.tokens=lex(source);this.i=0;this.decls=[];this.name='Program';this.returnType=null;this.depth=0;this.expressionDepth=0;this.typeDepth=0;this.expressionHeights=new WeakMap();}
+ constructor(source,{typeSources=[],sourceId,sourceName}={}){try{this.tokens=lex(source);}catch(error){error.sourceId=sourceId;error.sourceName=sourceName;throw error;}if(sourceId!==undefined)for(const t of this.tokens){t.sourceId=sourceId;t.sourceName=sourceName;}this.typeSources=typeSources;this.typeDefinitions=[];this.i=0;this.decls=[];this.name='Program';this.returnType=null;this.depth=0;this.expressionDepth=0;this.typeDepth=0;this.expressionHeights=new WeakMap();}
  peek(n=0){return this.tokens[this.i+n]||this.tokens.at(-1);} is(x){return this.peek().u===x;} next(){const t=this.peek();this.i=Math.min(this.i+1,this.tokens.length);return t;}
  eat(x){if(this.is(x)){return this.next();}return null;}
  need(x){if(!this.is(x))throw new SclError('Oczekiwano '+x+', znaleziono '+this.peek().text,this.peek());return this.next();}
@@ -65,26 +65,29 @@ export class Parser {
   if(primitive.has(u))return {kind:'scalar',name:u};
   if(timers.has(u))return {kind:'timer',name:u};
   if(u==='SILOWNIK')return cylinderSchema();
-  throw new SclError('Nieobsługiwany typ '+t.text+'. Zdefiniuj strukturę inline (STRUCT) lub użyj podstawowego typu.',t);
+  if(['id','global'].includes(t.kind)){safeKey(t.text,t);return {kind:'named',name:t.text,tok:t};}
+  throw new SclError('Oczekiwano typu danych.',t);
  }
  declarationList(section,end='END_VAR'){
   let list=[];
   while(!this.is(end)&&!this.is('EOF')){
    if(this.eat(';'))continue;
    const names=[this.ident()];while(this.eat(','))names.push(this.ident());this.need(':');const type=this.type();let init=null;if(this.eat(':='))init=this.expression();this.need(';');for(const n of names)list.push({name:n.text.replace(/^#/,''),type,init,section,tok:n});
-  }return list;
+  }const seen=new Set();for(const d of list){const key=d.name.toLowerCase();if(seen.has(key))throw new SclError('Pole lub zmienna zadeklarowana dwukrotnie: '+d.name,d.tok);seen.add(key);}return list;
  }
+ definitions(){while(this.eat('TYPE')){const tok=this.ident(),name=tok.text;if(this.eat('VERSION')){this.need(':');const version=this.next();if(version.kind!=='number')throw new SclError('Oczekiwano numeru wersji typu.',version);}this.eat(':');const type=this.type();this.eat(';');this.need('END_TYPE');this.eat(';');this.typeDefinitions.push({name,type,tok});}return this.typeDefinitions;}
  parse(){
+  this.definitions();
   let blockEnd=null;
   if(this.is('FUNCTION_BLOCK')||this.is('FUNCTION')||this.is('ORGANIZATION_BLOCK')){const kind=this.next().u;blockEnd={FUNCTION_BLOCK:'END_FUNCTION_BLOCK',FUNCTION:'END_FUNCTION',ORGANIZATION_BLOCK:'END_ORGANIZATION_BLOCK'}[kind];this.name=this.ident().text;if(kind==='FUNCTION'){this.need(':');if(!this.eat('VOID'))this.returnType=this.type();}}
   if(this.eat('VERSION')){this.need(':');this.next();}
   while(declarationSections.includes(this.peek().u)){
    const section=this.next().u;this.eat('RETAIN');this.eat('NON_RETAIN');this.decls.push(...this.declarationList(section));this.need('END_VAR');this.eat(';');
   }
-  if(blockEnd)this.need('BEGIN');else this.eat('BEGIN');const body=this.block(new Set(['END_FUNCTION_BLOCK','END_FUNCTION','END_ORGANIZATION_BLOCK','EOF']));
-  if(blockEnd){this.need(blockEnd);this.eat(';');}else if(!this.is('EOF')){this.next();this.eat(';');}this.need('EOF');
+  if(blockEnd)this.need('BEGIN');else this.eat('BEGIN');const body=this.block(new Set(['END_FUNCTION_BLOCK','END_FUNCTION','END_ORGANIZATION_BLOCK','TYPE','EOF']));
+  if(blockEnd){this.need(blockEnd);this.eat(';');}else if(!this.is('EOF')&&!this.is('TYPE')){this.next();this.eat(';');}this.definitions();this.need('EOF');
   const seen=new Set();for(const d of this.decls){let key=d.name.toLowerCase();if(seen.has(key))throw new SclError('Zmienna zadeklarowana dwukrotnie: '+d.name,d.tok);seen.add(key);}
-  return {body,decls:this.decls,name:this.name,returnType:this.returnType,sourceLines:this.tokens.at(-1).line};
+  return resolveProgramTypes({body,decls:this.decls,name:this.name,returnType:this.returnType,typeDefinitions:this.typeDefinitions,definitionOnly:!blockEnd&&this.typeDefinitions.length>0&&this.decls.length===0&&body.length===0,sourceLines:this.tokens.at(-1).line},this.typeSources);
  }
  block(stops,caseBody=false){if(++this.depth>80){this.depth--;throw new SclError('Zbyt głębokie zagnieżdżenie.',this.peek());}try{let b=[];while(!stops.has(this.peek().u)&&!this.is('EOF')&&(!caseBody||!this.caseLabelAhead())){if(this.eat(';'))continue;b.push(this.statement());}return b;}finally{this.depth--;}}
  statement(){let t=this.peek(),u=t.u;
@@ -120,9 +123,41 @@ export class Parser {
  }
 }
 export const scalar=name=>({kind:'scalar',name});
+// Resolve named types once, before instance memory or any program execution.
+// Definitions retain their own file/UTF-16 ranges; active source is never prefixed.
+export function projectTypeDefinitions(sources=[]){
+ const definitions=[];let size=0;
+ for(const entry of sources){const source=typeof entry==='string'?entry:entry.source;
+  if(typeof source!=='string'||!/^(?:\s|\/\/[^\n]*(?:\n|$)|\(\*[\s\S]*?\*\)|\/\*[\s\S]*?\*\/|\{[^}]*\})*TYPE\b/i.test(source))continue;
+  if((size+=source.length)>1000000)throw new SclError('Definicje TYPE mogą mieć łącznie najwyżej 1 MB.');
+  const parser=new Parser(source,{sourceId:entry.id,sourceName:entry.name});parser.definitions();
+  // Only standalone TYPE documents supply project definitions. Other programs
+  // remain independent execution units, including programs with inline types.
+  if(['FUNCTION_BLOCK','FUNCTION','ORGANIZATION_BLOCK'].includes(parser.peek().u))continue;
+  parser.need('EOF');definitions.push(...parser.typeDefinitions);
+ }return definitions;
+}
+export function resolveProgramTypes(program,sources=[]){
+ const registry=new Map(),resolved=new Map(),visiting=new Set(),heights=new WeakMap();let nodes=0;
+ for(const d of [...projectTypeDefinitions(sources),...program.typeDefinitions]){const key=d.name.toLowerCase();if(primitive.has(d.name.toUpperCase())||timers.has(d.name.toUpperCase())||key==='silownik')throw new SclError('Nazwa typu jest zarezerwowana: '+d.name,d.tok);if(registry.has(key))throw new SclError('Typ zadeklarowany dwukrotnie: '+d.name,d.tok);registry.set(key,d);}
+ const failDepth=(depth,tok)=>{if(depth>80)throw new SclError('Zbyt głębokie zagnieżdżenie typu UDT.',tok);};
+ const named=(name,tok,depth)=>{failDepth(depth,tok);const key=name.toLowerCase(),definition=registry.get(key);if(!definition)throw new SclError('Nieznany typ UDT '+name+'. Dodaj definicję TYPE … END_TYPE w tym pliku lub osobnym pliku projektu.',tok);if(visiting.has(key))throw new SclError('Cykliczna definicja typu UDT: '+[...visiting,key].join(' → '),tok);if(resolved.has(key))return resolved.get(key);visiting.add(key);const base=visit(definition.type,depth+1,definition.tok),type={...base,udtName:definition.name};heights.set(type,heights.get(base)||1);visiting.delete(key);resolved.set(key,type);return type;};
+ let constants;
+ const visit=(type,depth=0,tok)=>{failDepth(depth,tok);if(++nodes>50000)throw new SclError('Definicje typów przekraczają limit 50 000 elementów.',tok);
+  if(type.kind==='named')return named(type.name,type.tok,depth+1);
+  if(type.kind==='array')return bounded({...type,of:visit(type.of,depth+1,tok)},tok);
+  if(type.kind==='struct')return bounded({...type,fields:type.fields.map(f=>{const field={...f,type:visit(f.type,depth+1,f.tok)};if(f.init){if(field.type.kind!=='scalar')throw new SclError('Wartość początkowa pola STRUCT wymaga typu prostego.',f.tok);constants??=new Machine({decls:[],body:[]},{globals:{}});field.initialValue=coerce(constants.eval(f.init).v,field.type,f.tok);}return field;})},tok);
+  return type;
+ };
+ const bounded=(type,tok)=>{const children=type.kind==='array'?[type.of]:type.fields.map(f=>f.type),height=1+children.reduce((n,t)=>Math.max(n,heights.get(t)||1),0);if(height>80)throw new SclError('Zbyt głębokie zagnieżdżenie typu UDT.',tok);heights.set(type,height);return type;};
+ // Resolve every definition, including unused ones, to diagnose malformed UDTs.
+ for(const d of registry.values())named(d.name,d.tok,0);
+ const types=Object.create(null);for(const [key,type]of resolved)types[registry.get(key).name]=type;
+ return {...program,types,decls:program.decls.map(d=>({...d,type:visit(d.type,0,d.tok)})),returnType:program.returnType?visit(program.returnType):null};
+}
 export function cylinderSchema(){return {kind:'struct',fields:['Wysuw','Zasuw','CzujnikWysuw','CzujnikZasuw'].map(name=>({name,type:scalar('BOOL')}))};}
 export function defaultGlobals(){const beam={kind:'struct',fields:[1,2,3,4].map(m=>({name:'SilownikMagnes'+m,type:cylinderSchema()}))};const type={kind:'struct',fields:[{name:'Belka',type:{kind:'array',dims:[[0,10]],of:beam}}]};const g=Object.create(null);g.St1_Urzadzenia_A_DB={type,value:makeValue(type)};for(let b=0;b<=10;b++)for(let m=1;m<=4;m++)g.St1_Urzadzenia_A_DB.value.Belka[b]['SilownikMagnes'+m].CzujnikZasuw=true;return g;}
-export function makeValue(type,budget={n:0}){if(++budget.n>50000)throw new SclError('Struktura danych przekracza limit 50 000 elementów.');if(type.kind==='scalar'){if(type.name==='BOOL')return false;if(['STRING','CHAR'].includes(type.name))return '';return 0;}if(type.kind==='timer')return {__timer:type.name,IN:false,PT:0,Q:false,ET:0,CLK:false,prev:false,start:null,active:false};if(type.kind==='struct'){const o=Object.create(null);for(const f of type.fields)o[f.name]=makeValue(f.type,budget);return o;}if(type.kind==='array'){const rec=i=>{let a=Object.create(null);let [lo,hi]=type.dims[i];for(let j=lo;j<=hi;j++)a[j]=i===type.dims.length-1?makeValue(type.of,budget):rec(i+1);return a;};return rec(0);}throw new SclError('Nieprawidłowy typ.');}
+export function makeValue(type,budget={n:0}){if(++budget.n>50000)throw new SclError('Struktura danych przekracza limit 50 000 elementów.');if(type.kind==='scalar'){if(type.name==='BOOL')return false;if(['STRING','CHAR'].includes(type.name))return '';return 0;}if(type.kind==='timer')return {__timer:type.name,IN:false,PT:0,Q:false,ET:0,CLK:false,prev:false,start:null,active:false};if(type.kind==='struct'){const o=Object.create(null);for(const f of type.fields){o[f.name]=makeValue(f.type,budget);if(f.initialValue!==undefined)o[f.name]=clone(f.initialValue);}return o;}if(type.kind==='array'){const rec=i=>{let a=Object.create(null);let [lo,hi]=type.dims[i];for(let j=lo;j<=hi;j++)a[j]=i===type.dims.length-1?makeValue(type.of,budget):rec(i+1);return a;};return rec(0);}throw new SclError('Nieprawidłowy typ.');}
 const clone=x=>structuredClone(x);
 const findKey=(o,k)=>{safeKey(k);if(own(o,k))return k;return Object.keys(o).find(s=>s.toLowerCase()===k.toLowerCase());};
 const isReal=t=>t==='REAL'||t==='LREAL';
@@ -197,7 +232,7 @@ export class Machine {
  read(text){return this.get(this.ref(text));}write(text,value){this.set(this.ref(text),value);}
 }
 function roundEven(x){let floor=Math.floor(x),f=x-floor;return f===.5?(floor%2===0?floor:floor+1):Math.round(x);}
-export function compile(source,options){if(source.length>1000000)throw new SclError('Program może mieć najwyżej 1 MB.');return new Machine(new Parser(source).parse(),options);}
+export function compile(source,options){if(source.length>1000000)throw new SclError('Program może mieć najwyżej 1 MB.');return new Machine(new Parser(source,options).parse(),options);}
 export function globalsFromJSON(text){const data=JSON.parse(text),g=Object.create(null);const infer=v=>{if(v===null)throw new SclError('JSON nie może zawierać null.');if(typeof v==='boolean')return scalar('BOOL');if(typeof v==='number')return scalar(Number.isInteger(v)?'DINT':'REAL');if(typeof v==='string')return scalar('STRING');if(Array.isArray(v)){if(!v.length)throw new SclError('Tablica JSON nie może być pusta.');let type=infer(v[0]);for(const x of v)if(JSON.stringify(infer(x))!==JSON.stringify(type))throw new SclError('Elementy tablicy JSON muszą mieć ten sam typ.');return {kind:'array',dims:[[0,v.length-1]],of:type};}if(typeof v==='object')return {kind:'struct',fields:Object.entries(v).map(([name,val])=>({name:safeKey(name),type:infer(val)}))};throw new SclError('Nieobsługiwana wartość JSON.');};if(!data||Array.isArray(data)||typeof data!=='object')throw new SclError('Globalne dane muszą być obiektem JSON.');for(const [name,value]of Object.entries(data)){safeKey(name);g[name]={type:infer(value),value};}return g;}
 export class MagnetPlant {
  constructor(machine,{travel=180,auto=true,fault='none'}={}){this.machine=machine;this.travel=travel;this.auto=auto;this.fault=fault;this.positions=new Map();for(let b=1;b<=8;b++)for(let m=1;m<=4;m++)this.positions.set(b+':'+m,{pos:0,target:0});this.conflict=false;}

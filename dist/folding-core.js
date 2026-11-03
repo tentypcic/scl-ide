@@ -1,5 +1,5 @@
 import {declarationSections} from './language-catalog.js';
-const kinds = new Set(['IF', 'FOR', 'WHILE', 'REPEAT', 'CASE', 'REGION', 'STRUCT', ...declarationSections]);
+const kinds = new Set(['IF', 'FOR', 'WHILE', 'REPEAT', 'CASE', 'REGION', 'STRUCT', 'TYPE', ...declarationSections]);
 export function lineStarts(source) {
   const starts = [0];
   for (let i = 0; i < source.length; i++) if (source[i] === '\n') starts.push(i + 1);
@@ -39,7 +39,7 @@ export function maskSCL(source) {
 
 export function foldRanges(source) {
   const starts = lineStarts(source), masked = maskSCL(source), stack = [], ranges = [];
-  const tokens = /\b(?:END_REGION|END_REPEAT|END_WHILE|END_CASE|END_FOR|END_IF|END_VAR|END_STRUCT|VAR_INPUT|VAR_OUTPUT|VAR_IN_OUT|VAR_TEMP|VAR_CONSTANT|VAR_STAT|VAR|STRUCT|REGION|REPEAT|WHILE|CASE|FOR|IF)\b/gi;
+  const tokens = /\b(?:END_TYPE|TYPE|END_REGION|END_REPEAT|END_WHILE|END_CASE|END_FOR|END_IF|END_VAR|END_STRUCT|VAR_INPUT|VAR_OUTPUT|VAR_IN_OUT|VAR_TEMP|VAR_CONSTANT|VAR_STAT|VAR|STRUCT|REGION|REPEAT|WHILE|CASE|FOR|IF)\b/gi;
   let regionTitleEnd = -1;
   for (const token of masked.matchAll(tokens)) {
     if (token.index < regionTitleEnd || /[#.\w]/.test(masked[token.index - 1] || ' ')) continue;

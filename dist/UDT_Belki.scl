@@ -1,0 +1,32 @@
+// Example definitions transcribed from the supplied TIA interface screenshot.
+// Import this file alongside the FB. No instance data is included.
+TYPE "UDT_BelkaCisnienie"
+VERSION : 1.0
+STRUCT
+    CzujnikCisnieniaZbiornik : REAL;
+    CzujnikCisnieniaWyspaPneumatyczna : REAL;
+    ZadajCisnienieWyspaPneumatyczna : REAL;
+END_STRUCT;
+END_TYPE
+
+TYPE "UDT_WybranaBelka"
+VERSION : 1.0
+STRUCT
+    Pozycja : REAL;
+    Aktywna : BOOL;
+    Magnes_1 : "UDT_Magnes";
+    Magnes_2 : "UDT_Magnes";
+    Magnes_3 : "UDT_Magnes";
+    Magnes_4 : "UDT_Magnes";
+END_STRUCT;
+END_TYPE
+
+TYPE "UDT_Magnes"
+VERSION : 1.0
+STRUCT
+    Pozycja : REAL;
+    Aktywny : BOOL;
+    Blaszka : BOOL;
+    AktywnyKorekcja : BOOL;
+END_STRUCT;
+END_TYPE
