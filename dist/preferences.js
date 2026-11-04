@@ -78,6 +78,7 @@ theme.addEventListener('click', () => {
   savePreference('scl-ide-theme', theme.value);
   document.documentElement.dataset.theme = theme.value;
   updateThemeLabel();
+  window.dispatchEvent(new Event('scl-layout'));
 });
 function updateThemeLabel() {
   theme.title = language.value === 'en' ? 'Toggle light theme' : 'Przełącz jasny motyw';
