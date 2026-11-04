@@ -75,3 +75,6 @@ dialog{border-radius:9px}dialog h2{letter-spacing:-.4px}.dialog-header .icon-but
 [data-theme="light"] #traceCanvas{--trace-grid:#ccd7e3;color:#435970}
 [data-theme="light"] .trace-heading small{color:var(--ui-muted)}
 [data-theme="light"] .trace-heading select{background:#fff;color:var(--light-ink);border-color:var(--ui-line)}
+
+.tok-debug-directive{color:#d7a6f3}
+[data-theme="light"] .tok-debug-directive{color:#793799}

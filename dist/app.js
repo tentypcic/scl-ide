@@ -57,7 +57,7 @@ function restore(){try{projectHistory=new ProjectHistory(localStorage);const p=p
 
 function highlight(){const text=code.value;let result='',last=0,sourceLine=1;const visible=editorFolding?new Set(editorFolding.rows.map(r=>r.line)):null;const emit=(chunk,cls)=>{const pieces=chunk.split('\n');for(let i=0;i<pieces.length;i++){if(!visible||visible.has(sourceLine))result+=cls?'<span class="tok-'+cls+'">'+esc(pieces[i])+'</span>':esc(pieces[i]);if(i<pieces.length-1){if(!visible||visible.has(sourceLine))result+='\n';sourceLine++;}}};const re=/(\/\*[\s\S]*?\*\/|\(\*[\s\S]*?\*\)|\/\/[^\n]*|"(?:[^"]|"")*"|'(?:[^']|'')*'|\b(?:LTIME|TIME|LT|T)#[+-]?(?:\d+(?:\.\d+)?(?:ms|us|ns|d|h|m|s))+|#[\w\u00c0-\u024f]+|\b[A-Za-z_][\w]*\b|\b\d+(?:\.\d+)?)/gi;
  const kw=new Set(languageKeywords),types=new Set(supportedTypes);
- for(const m of text.matchAll(re)){emit(text.slice(last,m.index));let t=m[0],cls=t.startsWith('//')||t.startsWith('/*')||t.startsWith('(*')?'comment':t[0]==='"'||t[0]==="'"?'string':t[0]==='#'?'local':/^(LTIME|TIME|LT|T)#/i.test(t)?'time':/^\d/.test(t)?'number':kw.has(t.toUpperCase())?'keyword':types.has(t.toUpperCase())?'type':null;emit(t,cls);last=m.index+t.length;}emit(text.slice(last));$('#highlight').innerHTML=result+'\n';renderGutter();syncScroll();cursor();}
+ for(const m of text.matchAll(re)){emit(text.slice(last,m.index));let t=m[0],cls=t.startsWith('//')||t.startsWith('/*')||t.startsWith('(*')?'comment':t[0]==='"'||t[0]==="'"?'string':t[0]==='#'?'local':/^(LTIME|TIME|LT|T)#/i.test(t)?'time':/^\d/.test(t)?'number':kw.has(t.toUpperCase())?'keyword':types.has(t.toUpperCase())?'type':null;emit(t,/^\/\/\s*@debug\b/i.test(t)?'debug-directive':cls);last=m.index+t.length;}emit(text.slice(last));$('#highlight').innerHTML=result+'\n';renderGutter();syncScroll();cursor();}
 function renderGutter(){const rows=editorFolding?.rows||code.value.split('\n').map((text,i)=>({line:i+1,text}));const active=errorLine||machine?.nextLine||machine?.lastLine;$('#gutter').innerHTML='<div class="gutter-inner">'+rows.map(row=>{const n=row.line,r=editorFolding?.rangeAt(n),collapsed=r&&editorFolding.collapsed.has(r.key),insideBreak=r&&[...breakpoints].some(b=>b>r.start&&b<=r.end);return `<div class="gutter-row"><button class="gutter-line ${breakpoints.has(n)?'break':''} ${n===active?(errorLine?'error':'current'):''}" data-line="${n}" title="${n===machine?.nextLine?'Następna instrukcja — jeszcze niewykonana. ':''}${breakpoints.has(n)?'Usuń':'Dodaj'} punkt przerwania w linii ${n}" aria-label="Linia ${n}${breakpoints.has(n)?', punkt przerwania':''}">${n}</button>${r?`<button class="fold-toggle ${collapsed?'collapsed':''} ${collapsed&&insideBreak?'fold-breakpoint':''}" data-fold="${n}" aria-expanded="${!collapsed}" aria-label="${collapsed?'Rozwiń':'Zwiń'} ${r.kind} w linii ${n}" title="${collapsed?'Rozwiń':'Zwiń'} ${r.kind} · linie ${r.start}–${r.end}${insideBreak?' · breakpoint wewnątrz':''}">${collapsed?'▸':'▾'}</button>`:'<span class="fold-spacer"></span>'}</div>`;}).join('')+'</div>';$('#breakpointCount').textContent=breakpoints.size+' '+(breakpoints.size===1?'punkt przerwania':'punktów przerwania');syncScroll();}
 function editorLineHeight(){return parseFloat(getComputedStyle(code).lineHeight)||24;}
 function syncScroll(){runtimeMonitor?.render(machine,{running,dirty,error:!!errorLine});const h=$('#highlight');h.scrollTop=code.scrollTop;h.scrollLeft=code.scrollLeft;const g=$('.gutter-inner');if(g)g.style.transform=`translateY(${-code.scrollTop}px)`;const line=errorLine||machine?.nextLine||machine?.lastLine;const viewRow=editorFolding?editorFolding.rowForLine(line):line-1;editorFolding?.render();const el=$('#executionHighlight');if(line&&viewRow!==null){el.style.display='block';el.style.top=(viewRow*editorLineHeight()-code.scrollTop)+'px';el.classList.toggle('error',!!errorLine);}else el.style.display='none';}
@@ -65,7 +65,61 @@ function goLine(line){editorFolding?.revealLine(line);const lines=code.value.spl
 function cursor(){const before=code.value.slice(0,code.selectionStart).split('\n');$('#cursorStatus').textContent='Ln '+before.length+', Kol '+(before.at(-1).length+1);}
 function markDirty(){pause(false);dirty=true;errorLine=null;$('#dirtyMark').textContent='•';$('#compileStatus').innerHTML='<i style="background:#e4bd78"></i> Kod zmieniony';drafts[currentExample]=code.value;persist();highlight();renderStatus();}
 function workspaceTypeSources(){return Object.entries(drafts).filter(([id])=>id!==currentExample).map(([id,source])=>({id,name:projectFiles[id]||'Program.scl',source}));}
-function compileCode({quiet=false}={}){pause(false);try{const extra=globalsFromJSON($('#globalsJson').value);const globals=Object.create(null);Object.assign(globals,extra);machine=compile(code.value,{globals,typeSources:workspaceTypeSources(),dt:Number($('#dtSelect').value)});machine.onScan=()=>{const values={};for(const w of watches){try{const v=machine.read(w).v;if(typeof v==='boolean'||typeof v==='number')values[w]=Number(v);}catch{}}history.push({time:machine.now,values});if(history.length>160)history.shift();};history=[];dirty=false;errorLine=null;skipBreakpoint=null;$('#dirtyMark').textContent='';$('#compileStatus').innerHTML='<i></i> Składnia i nazwy OK';if(!quiet)log('Sprawdzono '+machine.program.name+'. Pamięć instancji wyzerowana.');renderAll();persist();return true;}catch(e){handleError(e);return false;}}
+function executeDebugDirective(token, runtime) {
+ if (!$('#enableDebugDirectives').checked) return;
+ const report = message => log(`[DEBUG · cykl ${runtime.scans + 1}] ${message}`, 'info', token.line);
+ const [, command, args=''] = /^\/\/\s*@debug(?:\s+(\w+))?\s*(.*)$/i.exec(token.text.trim()) ?? [];
+ const readMessage = value => {
+  const message = JSON.parse(value);
+  if (typeof message !== 'string') throw new Error('Oczekiwano tekstu w cudzysłowie.');
+  return message;
+ };
+ try {
+  switch (command?.toLowerCase()) {
+   case 'log': report(readMessage(args)); break;
+   case 'print': {
+    const paths = args.split(/,(?![^\[]*\])/).map(path => path.trim());
+    report(paths.map(path => {
+     const {v,t} = runtime.read(path);
+     return path + ' = ' + formatValue(v,t);
+    }).join(' · '));
+    break;
+   }
+   case 'input': {
+    const parts = /^(.+?)\s+("(?:[^"\\]|\\.)*")$/.exec(args);
+    if (!parts) throw new Error('Użyj input #Zmienna "Pytanie".');
+    const [, path, message] = parts;
+    const {v,t} = runtime.read(path);
+    if (typeof v === 'object') throw new Error('Podaj pojedyncze pole lub element tablicy.');
+    const prompt = readMessage(message);
+    setPanel('console');
+    report(prompt + ' (' + path + ', ' + t + ')');
+    let raw = window.prompt(prompt + ' [' + t + ']', formatValue(v,t));
+    while (raw !== null) {
+     try {
+      let value = raw;
+      if (typeof v === 'boolean') {
+       if (!/^(TRUE|FALSE|0|1)$/i.test(raw.trim())) throw new Error('Wpisz TRUE, FALSE, 1 lub 0.');
+       value = /^(TRUE|1)$/i.test(raw.trim());
+      } else if (typeof v === 'number' && !['TIME','LTIME'].includes(t)) {
+       value = Number(raw.trim().replace(',', '.'));
+       if (!raw.trim() || !Number.isFinite(value)) throw new Error('Wpisz liczbę.');
+      }
+      runtime.write(path,value);
+      report(path + ' = ' + formatValue(runtime.read(path).v,t));
+      return;
+     } catch (error) {
+      raw = window.prompt(error.message + '\n' + prompt, raw);
+     }
+    }
+    report('Anulowano. Zachowano dotychczasową wartość.');
+    break;
+   }
+   default: throw new Error('Dostępne polecenia: log, print, input.');
+  }
+ } catch (error) { report(error.message); }
+}
+function compileCode({quiet=false}={}){pause(false);try{const extra=globalsFromJSON($('#globalsJson').value);const globals=Object.create(null);Object.assign(globals,extra);machine=compile(code.value,{globals,debugDirectives:true,onDebug:executeDebugDirective,typeSources:workspaceTypeSources(),dt:Number($('#dtSelect').value)});machine.onScan=()=>{const values={};for(const w of watches){try{const v=machine.read(w).v;if(typeof v==='boolean'||typeof v==='number')values[w]=Number(v);}catch{}}history.push({time:machine.now,values});if(history.length>160)history.shift();};history=[];dirty=false;errorLine=null;skipBreakpoint=null;$('#dirtyMark').textContent='';$('#compileStatus').innerHTML='<i></i> Składnia i nazwy OK';if(!quiet)log('Sprawdzono '+machine.program.name+'. Pamięć instancji wyzerowana.');renderAll();persist();return true;}catch(e){handleError(e);return false;}}
 function handleError(e){pause(false);if(e.sourceId&&Object.hasOwn(drafts,e.sourceId)&&e.sourceId!==currentExample){drafts[currentExample]=code.value;projectFiles[currentExample]=filename;currentExample=e.sourceId;filename=projectFiles[currentExample]||'Program.scl';code.value=drafts[currentExample];$('#fileName').textContent=filename;machine=null;dirty=true;watches=[];breakpoints.clear();expanded.clear();highlight();renderExamples();updateTraceSelect();persist();}errorLine=e.line||1;$('#compileStatus').innerHTML='<i style="background:#ed817e"></i> Błąd · '+errorLine+':'+(e.col||1);log((e.sourceName?e.sourceName+': ':'')+e.message+' (kolumna '+(e.col||1)+')','error',errorLine);renderStatus();renderGutter();setPanel('console');goLine(errorLine);if(e.range){code.setSelectionRange(e.range.start,e.range.end);cursor();}toast('Linia '+errorLine+', kolumna '+(e.col||1)+': '+e.message);}
 function ensure(){if((dirty||!machine||errorLine)&&!compileCode())return false;if(machine.program.definitionOnly){toast('To plik definicji UDT. Otwórz program FB, FC lub OB, aby uruchomić symulację.');return false;}return true;}
 function pause(announce=true){const was=running;running=false;if(was&&machine?.nextLine)editorFolding?.revealLine(machine.nextLine);clearInterval(interval);interval=null;if(was&&announce)log('Pauza. Pamięć i czas symulacji zachowane.');if(was)renderAll();else renderStatus();}
