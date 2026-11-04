@@ -31,17 +31,11 @@ dialog{border-radius:9px}dialog h2{letter-spacing:-.4px}.dialog-header .icon-but
 [data-theme="light"] .tok-string{color:#974027}
 [data-theme="light"] :is(.tok-number,.tok-time){color:#6c5100}
 
-.workspace-preferences{display:flex;gap:8px;flex-shrink:0}
-.workspace-preferences label{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--ui-muted)}
-.workspace-preferences select{font:inherit;color:#e1e8f0;background:#232d39;border:1px solid #465569;border-radius:5px;padding:5px}
-.workspace-preferences select:focus-visible{outline:2px solid var(--ui-accent);outline-offset:2px}
 .sidebar #userProjects{padding:8px 0 12px}
 .sidebar .section-label{border-top:1px solid var(--ui-line);padding-top:10px;margin:12px 4px 4px}
 .sidebar .project-row .user-project-button{border-inline-start:2px solid transparent;border-radius:4px;text-align:start;padding:7px 8px}
 .sidebar .project-row .user-project-button.active{border-inline-start-color:var(--ui-accent);background:#283a4c}
 .sidebar .sidebar-bottom p+p{margin-top:8px}
-@media(max-width:1150px){.topbar{gap:10px}.workspace-preferences label>span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}}
-@media(max-width:650px){.topbar{height:88px;flex-wrap:wrap;align-content:center;row-gap:5px}.workspace{height:calc(100dvh - 88px)}.sidebar,.inspector{top:88px}.workspace-preferences{order:1;width:100%}.workspace-preferences label>span{position:static;width:auto;height:auto;clip-path:none}}
 [data-theme="light"]{--light-canvas:#fff;--light-panel:#f1f5fa;--light-ink:#1e3047;--light-selected:#dceafe}
 [data-theme="light"] :is(.topbar,.sidebar,.toolbar,.file-bar,.inspector,.bottom-panel,.editor-status,.line-gutter,.tool-popover){background:var(--light-panel);color:var(--light-ink)}
 [data-theme="light"] :is(.file-tab,.metrics,.workspace-preferences select,.io-top,.io-panel,.io-signals,dialog,dialog input,dialog select,dialog textarea){background:var(--light-canvas);color:var(--light-ink);border-color:var(--ui-line)}
@@ -49,3 +43,24 @@ dialog{border-radius:9px}dialog h2{letter-spacing:-.4px}.dialog-header .icon-but
 [data-theme="light"] :is(.layout-button.selected,.panel-tab.active,.sidebar .project-row .user-project-button.active,.sidebar .user-project-button:hover){background:var(--light-selected);color:#174a82}
 [data-theme="light"] :is(.io-row,.io-signal,.io-card,.tool-menu[open]>summary,.inspector input,.inspector textarea){background:#fff;color:var(--light-ink);border-color:var(--ui-line)}
 [data-theme="light"] #code{caret-color:var(--light-ink)}
+
+.workspace-preferences{display:flex;gap:4px;align-items:center;padding-inline-start:8px;border-inline-start:1px solid var(--ui-line)}
+.workspace-preferences button{width:30px;height:30px;border:1px solid transparent;border-radius:5px;background:transparent;color:inherit;font:600 11px var(--mono)}
+.workspace-preferences #uiTheme{font-size:17px}
+.workspace-preferences button:hover,.workspace-preferences button[aria-pressed="true"]{border-color:var(--ui-line);background:#778da322}
+.workspace-preferences button:focus-visible,.editor-tools button:focus-visible{outline:2px solid var(--ui-accent);outline-offset:2px}
+.file-bar{height:auto;flex-wrap:wrap}
+.editor-actions{flex-wrap:wrap;min-width:0;padding-block:5px}
+.editor-tools{display:flex;flex-wrap:wrap;gap:3px;padding-inline:6px;border-inline:1px solid var(--ui-line)}
+.editor-tools button{white-space:nowrap;padding:5px 6px;border-radius:4px}
+.editor-tools button:hover{background:#778da322}
+@media(max-width:650px){.topbar{gap:6px;padding-inline:8px}.workspace-preferences{gap:0;padding-inline-start:3px}}
+
+[data-theme="light"] :is(.panel-tabs,.var-group-label,.variable-search,.search-box){background:#e5edf6;color:#31465e;border-color:var(--ui-line)}
+[data-theme="light"] :is(.inspector-header h2,.metrics strong,.var-name,.io-signal-name strong,.var-left:hover .var-name,.editor-tools button,.editor-actions #snippetsBtn){color:var(--light-ink)}
+[data-theme="light"] :is(.eyebrow,.metrics>div>span,.metrics strong span,.var-head,.var-type,.io-signal-name small,.shortcuts,.editor-status span,.trash-label,.trash-row){color:#4b6078}
+[data-theme="light"] :is(.var-row,.metrics>div+div,.io-column+.io-column,.io-foot,.inspector-footer){border-color:var(--ui-line)}
+[data-theme="light"] :is(.bool-toggle,.io-pulse,.io-value,.value-input,.collapse-panel){background:#f0f5fb;color:#274464;border-color:#becde0}
+[data-theme="light"] :is(.bool-toggle.on,.io-value.on){background:#e1f5e9;color:#155738;border-color:#a3d2b7}
+[data-theme="light"] .editor-actions #compileBtn{color:#216146;border-color:#8cb39f}
+[data-theme="light"] .editor-actions #inlineValuesBtn.selected{color:#12538a}
