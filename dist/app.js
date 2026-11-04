@@ -63,7 +63,7 @@ function editorLineHeight(){return parseFloat(getComputedStyle(code).lineHeight)
 function syncScroll(){runtimeMonitor?.render(machine,{running,dirty,error:!!errorLine});const h=$('#highlight');h.scrollTop=code.scrollTop;h.scrollLeft=code.scrollLeft;const g=$('.gutter-inner');if(g)g.style.transform=`translateY(${-code.scrollTop}px)`;const line=errorLine||machine?.nextLine||machine?.lastLine;const viewRow=editorFolding?editorFolding.rowForLine(line):line-1;editorFolding?.render();const el=$('#executionHighlight');if(line&&viewRow!==null){el.style.display='block';el.style.top=(viewRow*editorLineHeight()-code.scrollTop)+'px';el.classList.toggle('error',!!errorLine);}else el.style.display='none';}
 function goLine(line){editorFolding?.revealLine(line);const lines=code.value.split('\n'),pos=lines.slice(0,line-1).reduce((n,s)=>n+s.length+1,0);code.focus();code.setSelectionRange(pos,pos);code.scrollTop=Math.max(0,(editorFolding?.rowForLine(line)??line-1)*editorLineHeight()-code.clientHeight*.35);syncScroll();cursor();}
 function cursor(){const before=code.value.slice(0,code.selectionStart).split('\n');$('#cursorStatus').textContent='Ln '+before.length+', Kol '+(before.at(-1).length+1);}
-function markDirty(){pause(false);dirty=true;errorLine=null;$('#dirtyMark').textContent='•';$('#compileStatus').innerHTML='<i style="background:#e4bd78"></i> Kod zmieniony';drafts[currentExample]=code.value;persist();highlight();renderStatus();}
+function markDirty(){$('#debugInputForm').hidden=true;pause(false);dirty=true;errorLine=null;$('#dirtyMark').textContent='•';$('#compileStatus').innerHTML='<i style="background:#e4bd78"></i> Kod zmieniony';drafts[currentExample]=code.value;persist();highlight();renderStatus();}
 function workspaceTypeSources(){return Object.entries(drafts).filter(([id])=>id!==currentExample).map(([id,source])=>({id,name:projectFiles[id]||'Program.scl',source}));}
 function executeDebugDirective(token, runtime) {
  if (!$('#enableDebugDirectives').checked) return;
@@ -94,9 +94,29 @@ function executeDebugDirective(token, runtime) {
     const prompt = readMessage(message);
     setPanel('console');
     report(prompt + ' (' + path + ', ' + t + ')');
-    let raw = window.prompt(prompt + ' [' + t + ']', formatValue(v,t));
-    while (raw !== null) {
+    const form = $('#debugInputForm'), field = $('#debugInputValue');
+    const wasRunning = running;
+    const wasStepping = steppingInstruction;
+    runtime.debugWaiting = true;
+    pause(false);
+    $('#debugInputLabel').textContent = prompt + ' [' + t + ']';
+    $('#debugInputError').textContent = '';
+    field.value = formatValue(v,t);
+    form.hidden = false;
+    field.focus();
+    field.select();
+    const resume = () => {
+     form.hidden = true;
+     runtime.debugWaiting = false;
+     if (machine !== runtime || dirty) return;
+     if (wasRunning) run();
+     else if (wasStepping) stepInstruction();
+     else stepScan();
+    };
+    form.onsubmit = event => {
+     event.preventDefault();
      try {
+      const raw = field.value;
       let value = raw;
       if (typeof v === 'boolean') {
        if (!/^(TRUE|FALSE|0|1)$/i.test(raw.trim())) throw new Error('Wpisz TRUE, FALSE, 1 lub 0.');
@@ -107,25 +127,31 @@ function executeDebugDirective(token, runtime) {
       }
       runtime.write(path,value);
       report(path + ' = ' + formatValue(runtime.read(path).v,t));
-      return;
      } catch (error) {
-      raw = window.prompt(error.message + '\n' + prompt, raw);
+      $('#debugInputError').textContent = error.message;
+      field.focus();
+      return;
      }
-    }
-    report('Anulowano. Zachowano dotychczasową wartość.');
+     resume();
+    };
+    $('#debugInputCancel').onclick = () => {
+     report('Anulowano. Zachowano dotychczasową wartość.');
+     resume();
+    };
     break;
    }
    default: throw new Error('Dostępne polecenia: log, print, input.');
   }
  } catch (error) { report(error.message); }
 }
-function compileCode({quiet=false}={}){pause(false);try{const extra=globalsFromJSON($('#globalsJson').value);const globals=Object.create(null);Object.assign(globals,extra);machine=compile(code.value,{globals,debugDirectives:true,onDebug:executeDebugDirective,typeSources:workspaceTypeSources(),dt:Number($('#dtSelect').value)});machine.onScan=()=>{const values={};for(const w of watches){try{const v=machine.read(w).v;if(typeof v==='boolean'||typeof v==='number')values[w]=Number(v);}catch{}}history.push({time:machine.now,values});if(history.length>160)history.shift();};history=[];dirty=false;errorLine=null;skipBreakpoint=null;$('#dirtyMark').textContent='';$('#compileStatus').innerHTML='<i></i> Składnia i nazwy OK';if(!quiet)log('Sprawdzono '+machine.program.name+'. Pamięć instancji wyzerowana.');renderAll();persist();return true;}catch(e){handleError(e);return false;}}
+function compileCode({quiet=false}={}){$('#debugInputForm').hidden=true;pause(false);try{const extra=globalsFromJSON($('#globalsJson').value);const globals=Object.create(null);Object.assign(globals,extra);machine=compile(code.value,{globals,debugDirectives:true,onDebug:executeDebugDirective,typeSources:workspaceTypeSources(),dt:Number($('#dtSelect').value)});machine.onScan=()=>{const values={};for(const w of watches){try{const v=machine.read(w).v;if(typeof v==='boolean'||typeof v==='number')values[w]=Number(v);}catch{}}history.push({time:machine.now,values});if(history.length>160)history.shift();};history=[];dirty=false;errorLine=null;skipBreakpoint=null;$('#dirtyMark').textContent='';$('#compileStatus').innerHTML='<i></i> Składnia i nazwy OK';if(!quiet)log('Sprawdzono '+machine.program.name+'. Pamięć instancji wyzerowana.');renderAll();persist();return true;}catch(e){handleError(e);return false;}}
 function handleError(e){pause(false);if(e.sourceId&&Object.hasOwn(drafts,e.sourceId)&&e.sourceId!==currentExample){drafts[currentExample]=code.value;projectFiles[currentExample]=filename;currentExample=e.sourceId;filename=projectFiles[currentExample]||'Program.scl';code.value=drafts[currentExample];$('#fileName').textContent=filename;machine=null;dirty=true;watches=[];breakpoints.clear();expanded.clear();highlight();renderExamples();updateTraceSelect();persist();}errorLine=e.line||1;$('#compileStatus').innerHTML='<i style="background:#ed817e"></i> Błąd · '+errorLine+':'+(e.col||1);log((e.sourceName?e.sourceName+': ':'')+e.message+' (kolumna '+(e.col||1)+')','error',errorLine);renderStatus();renderGutter();setPanel('console');goLine(errorLine);if(e.range){code.setSelectionRange(e.range.start,e.range.end);cursor();}toast('Linia '+errorLine+', kolumna '+(e.col||1)+': '+e.message);}
-function ensure(){if((dirty||!machine||errorLine)&&!compileCode())return false;if(machine.program.definitionOnly){toast('To plik definicji UDT. Otwórz program FB, FC lub OB, aby uruchomić symulację.');return false;}return true;}
+function ensure(){if((dirty||!machine||errorLine)&&!compileCode())return false;if(machine.debugWaiting){setPanel('console');$('#debugInputValue').focus();return false;}if(machine.program.definitionOnly){toast('To plik definicji UDT. Otwórz program FB, FC lub OB, aby uruchomić symulację.');return false;}return true;}
 function pause(announce=true){const was=running;running=false;if(was&&machine?.nextLine)editorFolding?.revealLine(machine.nextLine);clearInterval(interval);interval=null;if(was&&announce)log('Pauza. Pamięć i czas symulacji zachowane.');if(was)renderAll();else renderStatus();}
 function run(){if(running){pause();return;}if(!ensure()||!flushEditedValues())return;running=true;skipBreakpoint=machine.nextLine;log('Uruchomiono cykliczne wykonanie. Cykl: '+machine.dt+' ms.');restartInterval();renderStatus();}
 function restartInterval(){clearInterval(interval);if(!running)return;const dt=machine.dt,speed=Number($('#speedSelect').value),period=Math.max(16,dt/speed),scansPerTick=Math.max(1,Math.round(period*speed/dt));interval=setInterval(()=>{try{let steps=0;for(let s=0;s<scansPerTick&&running;s++){const initial=machine.scans;while(machine.scans===initial&&running){if(!machine.generator)machine.beginScan();if(machine.scans!==initial)break;const line=machine.nextLine;if(breakpoints.has(line)&&skipBreakpoint!==line){pause(false);log('Punkt przerwania w linii '+line+'.','info',line);goLine(line);renderAll();return;}skipBreakpoint=null;machine.step();if(++steps>=12000)break;}if(steps>=12000)break;}if(Date.now()-renderTick>75){renderAll();renderTick=Date.now();}}catch(e){handleError(e);}},period);}
-function stepInstruction(){pause(false);if(!ensure()||!flushEditedValues())return;try{machine.step();errorLine=null;renderAll();if(machine.nextLine)goLine(machine.nextLine);}catch(e){handleError(e);}}
+let steppingInstruction=false;
+function stepInstruction(){pause(false);if(!ensure()||!flushEditedValues())return;try{steppingInstruction=true;machine.step();errorLine=null;renderAll();if(machine.nextLine)goLine(machine.nextLine);}catch(e){handleError(e);}finally{steppingInstruction=false;}}
 function stepScan(){pause(false);if(!ensure()||!flushEditedValues())return;try{machine.scan();errorLine=null;renderAll();}catch(e){handleError(e);}}
 function renderStatus(){runtimeMonitor?.render(machine,{running,dirty,error:!!errorLine});const state=errorLine?'Błąd':dirty?'Kod zmieniony':running?'Wykonywanie cykliczne':machine?.nextLine?'Pauza · następna linia '+machine.nextLine:'Zatrzymany';$('#executionStatus').textContent=state;$('#executionDot').className='status-dot'+(running?' running':errorLine?' error':'');$('#runIcon').textContent=running?'Ⅱ':'▶';$('#runLabel').textContent=running?'Pauza':'Uruchom';$('#livePill').innerHTML='<i></i> '+(running?'RUN':errorLine?'BŁĄD':'PAUZA');$('#livePill').classList.toggle('running',running);$('#scanMetric').textContent=(machine?.scans||0).toLocaleString('pl');const time=machine?.now||0;$('#timeMetric').innerHTML=time>=1000?(time/1000).toFixed(2)+'<span> s</span>':time+'<span> ms</span>';}
 function formatValue(v,t){if(typeof v==='object')return '…';if(t==='TIME'||t==='LTIME')return 'T#'+v+'ms';if(typeof v==='boolean')return v?'TRUE':'FALSE';return String(v);}
@@ -167,7 +193,10 @@ function decodeInputValue(input){const type=input.dataset.type;let value=input.v
 const valueEditor=createValueEditor({decode:decodeInputValue,write:(input,value)=>machine.write(input.dataset.value,value),render:renderAll,report:toast});
 function flushEditedValues(){return !machine||valueEditor.flush($$('[data-value]'));}
 function commitValueInput(input){if(machine)return valueEditor.commit(input);}
-function pulseInput(path){if(!ensure()||!flushEditedValues())return;try{if(machine.generator)machine.scan();const value=machine.read(path).v;if(value===true){toast('Najpierw ustaw wejście na FALSE, aby podać impuls.');return;}machine.write(path,true);machine.scan();machine.write(path,false);renderAll();log('Impuls '+path+': TRUE przez jeden cykl PLC.');}catch(er){handleError(er);}}
+function pulseInput(path){if(!ensure()||!flushEditedValues())return;try{if(machine.generator)machine.scan();if(machine.debugWaiting)return;const value=machine.read(path).v;if(value===true){toast('Najpierw ustaw wejście na FALSE, aby podać impuls.');return;}machine.write(path,true);const runtime=machine;
+const onScan=runtime.onScan;
+runtime.onScan=()=>{runtime.onScan=onScan;onScan?.();runtime.write(path,false);};
+runtime.scan();renderAll();log('Impuls '+path+': TRUE przez jeden cykl PLC.');}catch(er){handleError(er);}}
 function openVariable(section='VAR_INPUT'){pause(false);$('#declSection').value=section;$('#declName').value='';$('#declError').textContent='';$('#declArray').checked=false;updateDeclarationPreview();$('#variableDialog').showModal();$('#declName').focus();}
 function updateDeclarationPreview(){const array=$('#declArray').checked,type=$('#declType').value,timer=type.endsWith('_TIME')||type.endsWith('_TRIG');$('#arrayBounds').classList.toggle('hidden',!array);$('#declInitial').disabled=array||timer;const name=$('#declName').value.trim()||'NowaZmienna';const spec=array?'Array['+$('#declLower').value+'..'+$('#declUpper').value+'] of '+type:type;const initial=!array&&!timer&&$('#declInitial').value.trim()?' := '+$('#declInitial').value.trim():'';$('#declPreview').textContent=name+' : '+spec+initial+';';$('#declError').textContent='';}
 function renderUserProjects(){const ids=Object.keys(drafts);$('#userProjects').innerHTML='<div class="section-label">MOJE PROGRAMY <span>'+ids.length+'</span></div>'+ids.map(id=>`<div class="project-row"><button class="user-project-button ${currentExample===id?'active':''}" data-project="${esc(id)}" title="${esc(projectFiles[id]||'Program.scl')}">S · ${esc(projectFiles[id]||'Program.scl')}</button><button class="delete-project" data-delete-project="${esc(id)}" aria-label="Usuń ${esc(projectFiles[id]||'Program.scl')}" title="Przenieś do kosza">×</button></div>`).join('')+'<div class="trash-toolbar"><div class="trash-heading">KOSZ · '+Object.keys(trash).length+'</div><button class="empty-trash-button" data-empty-trash '+(Object.keys(trash).length?'':'disabled')+' title="Opróżnij kosz z kopią w historii">Opróżnij kosz</button></div>'+Object.entries(trash).map(([id,p])=>`<div class="project-row"><span class="trashed-name">${esc(p.filename)}</span><button class="restore-project" data-restore-project="${esc(id)}" title="Przywróć program" aria-label="Przywróć ${esc(p.filename)}">↶</button></div>`).join('');}

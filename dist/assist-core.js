@@ -58,9 +58,39 @@ function textState(s){let state='code';for(let i=0;i<s.length;i++){let a=s[i],b=
 function memberBase(before,dot){let depth=0,quoted=false,i=dot-1;for(;i>=0;i--){const c=before[i];if(c==='"'){quoted=!quoted;continue;}if(quoted)continue;if(c===']'){depth++;continue;}if(c==='['){depth--;continue;}if(depth===0&&(/[\s;:=()+*/<>-]/.test(c)))break;}return before.slice(i+1,dot);}
 function rootKey(obj,k){return Object.keys(obj).find(x=>x.toLowerCase()===k.toLowerCase());}
 export function resolveMemberType(base,symbols){try{const p=new Parser(base),r=p.reference();p.need('EOF');let root=rootKey(r.global?symbols.globals:symbols.locals,r.root);let type=r.global?symbols.globals[root]?.type:symbols.locals[root];for(const seg of r.path){if(seg.indices){if(type?.kind!=='array')return null;type=type.of;}else if(type?.kind==='struct')type=type.fields.find(f=>f.name.toLowerCase()===seg.field.toLowerCase())?.type;else return null;}return type;}catch{return null;}}
+function debugSuggestions(before, caret, symbols) {
+ const line=before.split('\n').at(-1);
+ const directive=/^\s*\/\/\s*(@[a-z]*)$/i.exec(line);
+ const command=/^\s*\/\/\s*@debug\s+([a-z]*)$/i.exec(line);
+ const operands=/^\s*\/\/\s*@debug\s+(print|input)\s+(.*)$/i.exec(line);
+ let prefix, items;
+ if(directive){
+  prefix=directive[1];
+  items=[{label:'@debug',insert:'@debug ',kind:'dyrektywa',detail:'Dyrektywa debugowania'}];
+ }else if(command){
+  prefix=command[1];
+  items=[
+   {label:'log',insert:'log "${1:Komunikat}"${0}',snippet:true,kind:'dyrektywa',detail:'Wypisz komunikat'},
+   {label:'print',insert:'print ',kind:'dyrektywa',detail:'Wypisz wartości zmiennych'},
+   {label:'input',insert:'input ',kind:'dyrektywa',detail:'Poproś o wartość w konsoli'},
+  ];
+ }else if(operands){
+  const input=operands[1].toLowerCase()==='input';
+  const match=/(?:^|,\s*)([#"]?[\w\u00c0-\u024f]*)$/.exec(operands[2]);
+  if(!match||(input&&match.index>0))return null;
+  prefix=match[1];
+  const variable=(label,detail)=>({label,detail,kind:'zmienna',insert:input?label+' "${1:Podaj wartość}"${0}':label,snippet:input});
+  items=[];
+  if(!prefix.startsWith('"'))for(const [name,type] of Object.entries(symbols.locals))items.push(variable('#'+name,type.name||type.kind));
+  if(!prefix.startsWith('#'))for(const name of Object.keys(symbols.globals))items.push(variable('"'+name+'"','Tag lub DB'));
+ }else return null;
+ const query=prefix.toLowerCase().replace(/^[#"]/, '');
+ items=items.filter(item=>item.label.toLowerCase().replace(/^[#"]/, '').startsWith(query)).slice(0,40);
+ return items.length?{start:caret-prefix.length,end:caret,prefix,items}:null;
+}
 export function suggestions(source,caret,symbols,{manual=false,snippetsOnly=false}={}){
  if(snippetsOnly)return {start:caret,end:caret,prefix:'',items:snippets.map(s=>({...s,snippet:true}))};
- const before=source.slice(0,caret),state=textState(before);if(state==='code'&&/(?:^|\n)\s*REGION\s+[^\n]*$/i.test(before))return null;if(['line','block','cblock','single'].includes(state)&&!snippetsOnly)return null;
+ const before=source.slice(0,caret),state=textState(before);if(state==='line')return debugSuggestions(before,caret,symbols);if(state==='code'&&/(?:^|\n)\s*REGION\s+[^\n]*$/i.test(before))return null;if(['line','block','cblock','single'].includes(state)&&!snippetsOnly)return null;
  const member=/\.([A-Za-z_\u00c0-\u024f\d]*)$/.exec(before);let items=[],prefix='',start=caret;
  if(member&&state==='code'){
   prefix=member[1];start=caret-prefix.length;const type=resolveMemberType(memberBase(before,caret-prefix.length-1),symbols);if(type?.kind==='struct')items=type.fields.map(f=>({label:f.name,insert:f.name,kind:'pole',detail:f.type.udtName||f.type.name||f.type.kind}));
