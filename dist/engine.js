@@ -219,7 +219,7 @@ export class Machine {
  tick(tok){if(++this.ops>this.maxOps)throw new SclError('Przekroczono limit '+this.maxOps+' instrukcji w cyklu. Sprawdź pętle.',tok);}
  bool(e){const v=this.eval(e).v;if(typeof v!=='boolean')throw new SclError('Warunek wymaga BOOL.',e.tok);return v;}
  *execute(block){for(const s of block){this.tick(s.tok);yield s.tok.line;
-  switch(s.k){case 'debug':this.onDebug?.(s.tok,this);break;case 'assign':this.set(s.target,this.eval(s.value).v);this.recordDebug(s.tok.line,[s.target,s.value]);break;case 'call':this.timerCall(s);this.recordDebug(s.tok.line,[s.target,...s.args.map(a=>a.value)]);break;
+  switch(s.k){case 'debug':this.onDebug?.(s.tok,this);if(this.debugWaiting)yield s.tok.line;break;case 'assign':this.set(s.target,this.eval(s.value).v);this.recordDebug(s.tok.line,[s.target,s.value]);break;case 'call':this.timerCall(s);this.recordDebug(s.tok.line,[s.target,...s.args.map(a=>a.value)]);break;
    case 'if':{let chosen=s.other;for(const br of s.branches){const result=this.bool(br.c);this.recordDebug(br.c.tok?.line||s.tok.line,[br.c]);if(result){chosen=br.b;break;}}const flow=yield* this.execute(chosen);if(flow)return flow;break;}
    case 'case':{let v=this.eval(s.value).v,chosen=s.other;this.recordDebug(s.tok.line,[s.value]);outer:for(const c of s.cases)for(const [lo,hi] of c.labels)if(v>=this.eval(lo).v&&v<=this.eval(hi).v){chosen=c.b;break outer;}const flow=yield* this.execute(chosen);if(flow)return flow;break;}
    case 'for':{let lo=this.eval(s.lo).v,hi=this.eval(s.hi).v,by=this.eval(s.by).v;if(!Number.isInteger(lo)||!Number.isInteger(hi)||!Number.isInteger(by)||by===0)throw new SclError('FOR wymaga całkowitych granic i BY różnego od 0.',s.tok);for(let i=lo;by>0?i<=hi:i>=hi;i+=by){this.tick(s.tok);this.set(s.target,i);this.recordDebug(s.tok.line,[s.target,s.lo,s.hi]);const flow=yield* this.execute(s.b);if(flow==='return')return flow;if(flow==='exit')break;}break;}
@@ -230,8 +230,8 @@ export class Machine {
  }}
  beginScan(){this.ops=0;this.debugPending=new Map();for(const d of this.program.decls)if(d.section==='VAR_TEMP'){this.locals[d.name]=makeValue(d.type);if(d.init)this.locals[d.name]=coerce(this.eval(d.init).v,d.type,d.tok);}this.generator=this.execute(this.program.body);const n=this.generator.next();this.nextLine=n.value??null;if(n.done)this.finishScan();}
  finishScan(){if(this.debugEnabled)this.debugCompleted=new Map(this.debugPending);this.generator=null;this.nextLine=null;this.scans++;this.now+=this.dt;this.onScan?.(this);}
- step(){if(!this.generator){this.beginScan();if(!this.generator)return {scanDone:true,line:null};}this.lastLine=this.nextLine;const n=this.generator.next();if(n.done)this.finishScan();else this.nextLine=n.value;return {scanDone:!this.generator,line:this.lastLine,nextLine:this.nextLine};}
- scan(){const scan=this.scans;while(this.scans===scan)this.step();}
+ step(){if(this.debugWaiting)return {scanDone:false,nextLine:this.nextLine};if(!this.generator){this.beginScan();if(!this.generator)return {scanDone:true,line:null};}this.lastLine=this.nextLine;const n=this.generator.next();if(n.done)this.finishScan();else this.nextLine=n.value;return {scanDone:!this.generator,line:this.lastLine,nextLine:this.nextLine};}
+ scan(){const scan=this.scans;while(this.scans===scan&&!this.debugWaiting)this.step();}
  input(name,value){const key=findKey(this.locals,name);if(key===undefined)throw new SclError('Nieznana zmienna: '+name);this.locals[key]=coerce(value,this.schemas[key]);}
  ref(text){let p=new Parser(text);const r=p.reference();p.need('EOF');return r;}
  read(text){return this.get(this.ref(text));}write(text,value){this.set(this.ref(text),value);}

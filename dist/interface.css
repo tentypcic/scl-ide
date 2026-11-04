@@ -78,3 +78,8 @@ dialog{border-radius:9px}dialog h2{letter-spacing:-.4px}.dialog-header .icon-but
 
 .tok-debug-directive{color:#d7a6f3}
 [data-theme="light"] .tok-debug-directive{color:#793799}
+
+#debugInputForm:not([hidden]){display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:8px 12px;border-bottom:1px solid var(--ui-line)}
+#debugInputValue{min-width:7em;padding:5px;color:inherit;background:transparent;border:1px solid var(--ui-muted);border-radius:4px}
+#debugInputError{color:#e17c7c}
+[data-theme="light"] #debugInputError{color:#a12525}
