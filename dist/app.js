@@ -30,8 +30,14 @@ END_FUNCTION_BLOCK`;
 const examples={};
 const legacyExamples={"starter": {"hash": "5e8165da", "file": "MojProgram.scl"}, "magnets": {"hash": "43da3114", "file": "FB_AnimacjaMagnesow.scl"}, "timer": {"hash": "6588f62c", "file": "FB_Timer.scl"}, "counter": {"hash": "a51b5233", "file": "FB_Sekwencja.scl"}, "array": {"hash": "e4a9302d", "file": "FB_Tablice.scl"}};
 function toast(message){$('#toast').textContent=message;$('#toast').classList.add('visible');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('visible'),3500);}
-function log(message,type='info',line=null){logs.push({message,type,line,time:machine?.now||0});if(logs.length>150)logs.shift();renderLogs();}
-function renderLogs(){const el=$('#logs');el.innerHTML=logs.map(l=>`<div class="log-row ${l.type}"><span class="log-time">${(l.time/1000).toFixed(2)} s</span><span class="log-icon">${l.type==='error'?'!':l.type==='warn'?'△':'✓'}</span><span class="log-text">${esc(l.message)}${l.line?` <button class="error-jump" data-line="${l.line}">Linia ${l.line}</button>`:''}</span></div>`).join('');$('#logCount').textContent=logs.length;if(activePanel==='console')el.parentElement.scrollTop=el.parentElement.scrollHeight;}
+let debugPromptLog = null;
+function log(message,type='info',line=null){const entry={message,type,line,time:machine?.now||0};logs.push(entry);if(logs.length>150)logs.shift();renderLogs();return entry;}
+function renderLogs(){const el=$('#logs'),form=$('#debugInputForm'),focused=form.contains(document.activeElement)?document.activeElement:null;el.innerHTML=logs.map(l=>`<div class="log-row ${l.type}"><span class="log-time">${(l.time/1000).toFixed(2)} s</span><span class="log-icon">${l.type==='error'?'!':l.type==='warn'?'△':'✓'}</span><div class="log-text">${esc(l.message)}${l.line?` <button class="error-jump" data-line="${l.line}">Linia ${l.line}</button>`:''}</div></div>`).join('');
+ const promptRow=el.children[logs.indexOf(debugPromptLog)];
+ if(promptRow)promptRow.querySelector('.log-text').append(form);
+ else el.after(form);
+ focused?.focus({preventScroll:true});
+ $('#logCount').textContent=logs.length;if(activePanel==='console')el.parentElement.scrollTop=el.parentElement.scrollHeight;}
 function setPanel(name){window.dispatchEvent(new Event('scl-open-panel'));activePanel=name;$$('[data-panel]').forEach(b=>{b.classList.toggle('active',b.dataset.panel===name);b.setAttribute('aria-selected',String(b.dataset.panel===name));});for(const n of ['io','trace','console'])$('#'+n+'Panel').classList.toggle('hidden',n!==name);if(name==='trace')drawTrace();}
 function inspect(name){activeInspect=name;$$('[data-inspect]').forEach(b=>b.classList.toggle('active',b.dataset.inspect===name));for(const n of ['locals','watches','globals'])$('#'+n+'View').classList.toggle('hidden',n!==name);renderInspector();}
 function serialize(){return {version:3,currentExample,filename,code:code.value,drafts,projectFiles,trash,watches,breakpoints:[...breakpoints],globals:$('#globalsJson').value,dt:Number($('#dtSelect').value),speed:Number($('#speedSelect').value)};}
@@ -63,7 +69,7 @@ function editorLineHeight(){return parseFloat(getComputedStyle(code).lineHeight)
 function syncScroll(){runtimeMonitor?.render(machine,{running,dirty,error:!!errorLine});const h=$('#highlight');h.scrollTop=code.scrollTop;h.scrollLeft=code.scrollLeft;const g=$('.gutter-inner');if(g)g.style.transform=`translateY(${-code.scrollTop}px)`;const line=errorLine||machine?.nextLine||machine?.lastLine;const viewRow=editorFolding?editorFolding.rowForLine(line):line-1;editorFolding?.render();const el=$('#executionHighlight');if(line&&viewRow!==null){el.style.display='block';el.style.top=(viewRow*editorLineHeight()-code.scrollTop)+'px';el.classList.toggle('error',!!errorLine);}else el.style.display='none';}
 function goLine(line){editorFolding?.revealLine(line);const lines=code.value.split('\n'),pos=lines.slice(0,line-1).reduce((n,s)=>n+s.length+1,0);code.focus();code.setSelectionRange(pos,pos);code.scrollTop=Math.max(0,(editorFolding?.rowForLine(line)??line-1)*editorLineHeight()-code.clientHeight*.35);syncScroll();cursor();}
 function cursor(){const before=code.value.slice(0,code.selectionStart).split('\n');$('#cursorStatus').textContent='Ln '+before.length+', Kol '+(before.at(-1).length+1);}
-function markDirty(){$('#debugInputForm').hidden=true;pause(false);dirty=true;errorLine=null;$('#dirtyMark').textContent='•';$('#compileStatus').innerHTML='<i style="background:#e4bd78"></i> Kod zmieniony';drafts[currentExample]=code.value;persist();highlight();renderStatus();}
+function markDirty(){debugPromptLog=null;$('#debugInputForm').hidden=true;pause(false);dirty=true;errorLine=null;$('#dirtyMark').textContent='•';$('#compileStatus').innerHTML='<i style="background:#e4bd78"></i> Kod zmieniony';drafts[currentExample]=code.value;persist();highlight();renderStatus();}
 function workspaceTypeSources(){return Object.entries(drafts).filter(([id])=>id!==currentExample).map(([id,source])=>({id,name:projectFiles[id]||'Program.scl',source}));}
 function executeDebugDirective(token, runtime) {
  if (!$('#enableDebugDirectives').checked) return;
@@ -93,7 +99,7 @@ function executeDebugDirective(token, runtime) {
     if (typeof v === 'object') throw new Error('Podaj pojedyncze pole lub element tablicy.');
     const prompt = readMessage(message);
     setPanel('console');
-    report(prompt + ' (' + path + ', ' + t + ')');
+    debugPromptLog = report(prompt + ' (' + path + ', ' + t + ')');
     const form = $('#debugInputForm'), field = $('#debugInputValue');
     runtime.debugWaiting = true;
     pause(false);
@@ -101,10 +107,12 @@ function executeDebugDirective(token, runtime) {
     $('#debugInputError').textContent = '';
     field.value = formatValue(v,t);
     form.hidden = false;
+    renderLogs();
     field.focus();
     field.select();
     const resume = () => {
      form.hidden = true;
+     debugPromptLog = null;
      runtime.debugWaiting = false;
      if (machine !== runtime || dirty) return;
      renderAll();
@@ -140,7 +148,7 @@ function executeDebugDirective(token, runtime) {
   }
  } catch (error) { report(error.message); }
 }
-function compileCode({quiet=false}={}){$('#debugInputForm').hidden=true;pause(false);try{const extra=globalsFromJSON($('#globalsJson').value);const globals=Object.create(null);Object.assign(globals,extra);machine=compile(code.value,{globals,debugDirectives:true,onDebug:executeDebugDirective,typeSources:workspaceTypeSources(),dt:Number($('#dtSelect').value)});machine.onScan=()=>{const values={};for(const w of watches){try{const v=machine.read(w).v;if(typeof v==='boolean'||typeof v==='number')values[w]=Number(v);}catch{}}history.push({time:machine.now,values});if(history.length>160)history.shift();};history=[];dirty=false;errorLine=null;skipBreakpoint=null;$('#dirtyMark').textContent='';$('#compileStatus').innerHTML='<i></i> Składnia i nazwy OK';if(!quiet)log('Sprawdzono '+machine.program.name+'. Pamięć instancji wyzerowana.');renderAll();persist();return true;}catch(e){handleError(e);return false;}}
+function compileCode({quiet=false}={}){debugPromptLog=null;$('#debugInputForm').hidden=true;pause(false);try{const extra=globalsFromJSON($('#globalsJson').value);const globals=Object.create(null);Object.assign(globals,extra);machine=compile(code.value,{globals,debugDirectives:true,onDebug:executeDebugDirective,typeSources:workspaceTypeSources(),dt:Number($('#dtSelect').value)});machine.onScan=()=>{const values={};for(const w of watches){try{const v=machine.read(w).v;if(typeof v==='boolean'||typeof v==='number')values[w]=Number(v);}catch{}}history.push({time:machine.now,values});if(history.length>160)history.shift();};history=[];dirty=false;errorLine=null;skipBreakpoint=null;$('#dirtyMark').textContent='';$('#compileStatus').innerHTML='<i></i> Składnia i nazwy OK';if(!quiet)log('Sprawdzono '+machine.program.name+'. Pamięć instancji wyzerowana.');renderAll();persist();return true;}catch(e){handleError(e);return false;}}
 function handleError(e){pause(false);if(e.sourceId&&Object.hasOwn(drafts,e.sourceId)&&e.sourceId!==currentExample){drafts[currentExample]=code.value;projectFiles[currentExample]=filename;currentExample=e.sourceId;filename=projectFiles[currentExample]||'Program.scl';code.value=drafts[currentExample];$('#fileName').textContent=filename;machine=null;dirty=true;watches=[];breakpoints.clear();expanded.clear();highlight();renderExamples();updateTraceSelect();persist();}errorLine=e.line||1;$('#compileStatus').innerHTML='<i style="background:#ed817e"></i> Błąd · '+errorLine+':'+(e.col||1);log((e.sourceName?e.sourceName+': ':'')+e.message+' (kolumna '+(e.col||1)+')','error',errorLine);renderStatus();renderGutter();setPanel('console');goLine(errorLine);if(e.range){code.setSelectionRange(e.range.start,e.range.end);cursor();}toast('Linia '+errorLine+', kolumna '+(e.col||1)+': '+e.message);}
 function ensure(){if((dirty||!machine||errorLine)&&!compileCode())return false;if(machine.debugWaiting){setPanel('console');$('#debugInputValue').focus();return false;}if(machine.program.definitionOnly){toast('To plik definicji UDT. Otwórz program FB, FC lub OB, aby uruchomić symulację.');return false;}return true;}
 function pause(announce=true){const was=running;running=false;if(was&&machine?.nextLine)editorFolding?.revealLine(machine.nextLine);clearInterval(interval);interval=null;if(was&&announce)log('Pauza. Pamięć i czas symulacji zachowane.');if(was)renderAll();else renderStatus();}
@@ -238,7 +246,7 @@ function wire(){
  $('#userProjects').onclick=e=>{if(e.target.closest('[data-empty-trash]')){openEmptyTrash();return;}let b=e.target.closest('[data-delete-project]');if(b){deleteProgram(b.dataset.deleteProject);return;}b=e.target.closest('[data-restore-project]');if(b){restoreProgram(b.dataset.restoreProject);return;}b=e.target.closest('[data-project]');if(b)openUserProject(b.dataset.project);};
  $('#watchForm').onsubmit=e=>{e.preventDefault();const v=$('#watchInput').value.trim();if(v){addWatch(v);$('#watchInput').value='';}};$('#applyGlobals').onclick=()=>compileCode();$('#globalsJson').oninput=()=>{dirty=true;pause(false);persist();$('#compileStatus').innerHTML='<i style="background:#e4bd78"></i> Dane DB zmienione';};
 
- $('#traceSelect').onchange=drawTrace;window.addEventListener('resize',drawTrace);window.addEventListener('scl-layout',()=>{syncScroll();drawTrace();});$('#clearLogs').onclick=()=>{logs=[];renderLogs();};$('#logs').onclick=e=>{const b=e.target.closest('[data-line]');if(b)goLine(Number(b.dataset.line));};$('#clearBreakpoints').onclick=()=>{breakpoints.clear();renderGutter();persist();toast('Usunięto punkty przerwania');};
+ $('#traceSelect').onchange=drawTrace;window.addEventListener('resize',drawTrace);window.addEventListener('scl-layout',()=>{syncScroll();drawTrace();});$('#clearLogs').onclick=()=>{logs=machine?.debugWaiting&&debugPromptLog?[debugPromptLog]:[];renderLogs();};$('#logs').onclick=e=>{const b=e.target.closest('[data-line]');if(b)goLine(Number(b.dataset.line));};$('#clearBreakpoints').onclick=()=>{breakpoints.clear();renderGutter();persist();toast('Usunięto punkty przerwania');};
  for(const id of ['helpBtn'])$('#'+id).onclick=()=>$('#helpDialog').showModal();$('#closeHelp').onclick=()=>$('#helpDialog').close();$('#helpDialog').onclick=e=>{if(e.target===e.currentTarget){const r=e.currentTarget.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.currentTarget.close();}};$('.brand').onclick=e=>{e.preventDefault();code.focus();};
  $('#exportBtn').onclick=()=>{if($('#autoFormat').checked)formatEditor(false);download(filename,code.value);toast('Pobrano plik SCL');};$('#downloadProject').onclick=()=>{if($('#autoFormat').checked)formatEditor(false);exportWorkspace();toast('Pobrano projekt z kodem, ustawieniami i historią');};$('#importBtn').onclick=()=>$('#fileInput').click();$('#fileInput').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>10000000)throw Error('Maksymalny rozmiar projektu z historią: 10 MB.');const text=await f.text();const imported=decodeImport(f.name,text);pause(false);if(!protectWorkspace('Przed importem '+f.name))return;if(imported){projectHistory.save(imported,{label:'Import projektu',imported:importedEntries(imported)});loadProject(imported);}else{currentExample='user_'+revisionId();filename=f.name;projectFiles[currentExample]=filename;code.value=text;drafts[currentExample]=text;watches=[];breakpoints.clear();}refreshProject();persist('Import pliku');toast('Wczytano '+f.name);}catch(er){toast(er.message);}finally{e.target.value='';}};
  document.addEventListener('keydown',e=>{if(document.querySelector('dialog[open]'))return;if(e.key==='F5'){e.preventDefault();run();}if(e.key==='F10'){e.preventDefault();if(e.shiftKey)stepScan();else stepInstruction();}if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();compileCode();}if(e.key.toLowerCase()==='s'&&(e.ctrlKey||e.metaKey)){e.preventDefault();if($('#autoFormat').checked)formatEditor(false);download(filename,code.value);}});
