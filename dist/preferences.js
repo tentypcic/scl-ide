@@ -47,6 +47,10 @@ function savePreference(key, value) {
 
 function updateLanguage() {
   document.documentElement.lang = language.value;
+  language.textContent = language.value === 'en' ? 'PL' : 'EN';
+  language.title = language.value === 'en' ? 'Przełącz na polski' : 'Switch to English';
+  language.setAttribute('aria-label', language.title);
+  updateThemeLabel();
   const dictionary = language.value === 'en' ? translations : english;
   for (const section of document.querySelectorAll(controls)) {
     const walker = document.createTreeWalker(section, NodeFilter.SHOW_TEXT);
@@ -64,14 +68,23 @@ language.value = readPreference('scl-ide-language', 'pl') === 'en' ? 'en' : 'pl'
 theme.value = readPreference('scl-ide-theme', 'dark') === 'light' ? 'light' : 'dark';
 document.documentElement.dataset.theme = theme.value;
 updateLanguage();
-language.addEventListener('change', () => {
+language.addEventListener('click', () => {
+  language.value = language.value === 'en' ? 'pl' : 'en';
   savePreference('scl-ide-language', language.value);
   updateLanguage();
 });
-theme.addEventListener('change', () => {
+theme.addEventListener('click', () => {
+  theme.value = theme.value === 'light' ? 'dark' : 'light';
   savePreference('scl-ide-theme', theme.value);
   document.documentElement.dataset.theme = theme.value;
+  updateThemeLabel();
 });
+function updateThemeLabel() {
+  theme.title = language.value === 'en' ? 'Toggle light theme' : 'Przełącz jasny motyw';
+  theme.setAttribute('aria-label', theme.title);
+  theme.setAttribute('aria-pressed', String(theme.value === 'light'));
+}
+
 const observer = new MutationObserver(() => {
   if (language.value === 'en') updateLanguage();
 });
