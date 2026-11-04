@@ -10,7 +10,7 @@ const primitive=new Set(primitiveTypes);
 const timers=new Set(timerTypes);
 const own=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);
 const safeKey=(k,tok)=>{if(['__proto__','prototype','constructor'].includes(String(k).toLowerCase()))throw new SclError('Niedozwolona nazwa: '+k,tok);return k;};
-export function lex(source) {
+export function lex(source, {debugDirectives=false}={}) {
  let p=0,line=1,col=1,out=[];
  // All offsets/columns use UTF-16 code units, matching textarea selections.
  const position=(length=1)=>{const raw=source.slice(p,p+length),parts=raw.split('\n');return {line,col,start:p,end:p+raw.length,endLine:line+parts.length-1,endCol:parts.length>1?parts.at(-1).length+1:col+raw.length};};
@@ -27,7 +27,11 @@ export function lex(source) {
   if(out.length>200000)throw new SclError('Program jest zbyt duży.',position());
   const tail=source.slice(p);let m;
   if((m=/^\s+/.exec(tail))){advance(m[0]);continue;}
-  if(tail.startsWith('//')){advance(tail.split('\n')[0]);continue;}
+  if(tail.startsWith('//')){
+   const comment=tail.split('\n')[0];
+   if(debugDirectives&&/^\/\/\s*@debug\b/i.test(comment)&&!source.slice(p-col+1,p).trim())add('debug',comment);
+   advance(comment);continue;
+  }
   if(tail.startsWith('(*')||tail.startsWith('/*')){let end=source.indexOf(tail.startsWith('(*')?'*)':'*/',p+2);if(end<0)throw new SclError('Niezamknięty komentarz.',position(2));advance(source.slice(p,end+2));continue;}
   if(tail[0]==='{'){let end=source.indexOf('}',p+1);if(end<0)throw new SclError('Niezamknięty atrybut bloku.',position());advance(source.slice(p,end+1));continue;}
   if((m=/^(?:LTIME|TIME|LT|T)#[+-]?(?:\d+(?:\.\d+)?(?:ms|us|ns|d|h|m|s))+/i.exec(tail))){add('time',m[0]);advance(m[0]);continue;}
@@ -51,7 +55,7 @@ function timeValue(s){let v=0;const sign=s.includes('#-')?-1:1;const units={d:86
 const lit=(v,t='DINT',tok={})=>({k:'lit',v,t,tok});
 const powers={OR:1,XOR:2,AND:3,'=':4,'<>':4,'<':4,'>':4,'<=':4,'>=':4,'+':5,'-':5,'*':6,'/':6,MOD:6,DIV:6,'**':7};
 export class Parser {
- constructor(source,{typeSources=[],sourceId,sourceName}={}){try{this.tokens=lex(source);}catch(error){error.sourceId=sourceId;error.sourceName=sourceName;throw error;}if(sourceId!==undefined)for(const t of this.tokens){t.sourceId=sourceId;t.sourceName=sourceName;}this.typeSources=typeSources;this.typeDefinitions=[];this.i=0;this.decls=[];this.name='Program';this.returnType=null;this.depth=0;this.expressionDepth=0;this.typeDepth=0;this.expressionHeights=new WeakMap();}
+ constructor(source,{typeSources=[],sourceId,sourceName,debugDirectives}={}){try{this.tokens=lex(source,{debugDirectives});}catch(error){error.sourceId=sourceId;error.sourceName=sourceName;throw error;}if(sourceId!==undefined)for(const t of this.tokens){t.sourceId=sourceId;t.sourceName=sourceName;}this.typeSources=typeSources;this.typeDefinitions=[];this.i=0;this.decls=[];this.name='Program';this.returnType=null;this.depth=0;this.expressionDepth=0;this.typeDepth=0;this.expressionHeights=new WeakMap();}
  peek(n=0){return this.tokens[this.i+n]||this.tokens.at(-1);} is(x){return this.peek().u===x;} next(){const t=this.peek();this.i=Math.min(this.i+1,this.tokens.length);return t;}
  eat(x){if(this.is(x)){return this.next();}return null;}
  need(x){if(!this.is(x))throw new SclError('Oczekiwano '+x+', znaleziono '+this.peek().text,this.peek());return this.next();}
@@ -91,6 +95,7 @@ export class Parser {
  }
  block(stops,caseBody=false){if(++this.depth>80){this.depth--;throw new SclError('Zbyt głębokie zagnieżdżenie.',this.peek());}try{let b=[];while(!stops.has(this.peek().u)&&!this.is('EOF')&&(!caseBody||!this.caseLabelAhead())){if(this.eat(';'))continue;b.push(this.statement());}return b;}finally{this.depth--;}}
  statement(){let t=this.peek(),u=t.u;
+  if(t.kind==='debug'){this.next();return {k:'debug',tok:t};}
   if(u==='IF'){this.next();const branches=[];let c=this.expression();this.need('THEN');branches.push({c,b:this.block(new Set(['ELSIF','ELSE','END_IF']))});while(this.eat('ELSIF')){c=this.expression();this.need('THEN');branches.push({c,b:this.block(new Set(['ELSIF','ELSE','END_IF']))});}let other=[];if(this.eat('ELSE'))other=this.block(new Set(['END_IF']));this.need('END_IF');this.need(';');return {k:'if',branches,other,tok:t};}
   if(u==='CASE'){this.next();let value=this.expression();this.need('OF');let cases=[];while(!this.is('END_CASE')&&!this.is('ELSE')&&!this.is('EOF')){const labels=this.caseLabels();this.need(':');const b=this.block(new Set(['ELSE','END_CASE']),true);cases.push({labels,b});}let other=[];if(this.eat('ELSE'))other=this.block(new Set(['END_CASE']));this.need('END_CASE');this.need(';');return {k:'case',value,cases,other,tok:t};}
   if(u==='FOR'){this.next();const target=this.reference();this.need(':=');let lo=this.expression();this.need('TO');let hi=this.expression();let by=lit(1);if(this.eat('BY'))by=this.expression();this.need('DO');let b=this.block(new Set(['END_FOR']));this.need('END_FOR');this.need(';');return {k:'for',target,lo,hi,by,b,tok:t};}
@@ -168,7 +173,7 @@ for(const n of ['SINT_TO_INT','USINT_TO_INT','UINT_TO_DINT','UDINT_TO_REAL','INT
 export const supportedFunctions=[...mathFns,...Object.keys(standardSignatures)].sort();
 const timerFields=new Set(['IN','PT','Q','ET','CLK']);
 export class Machine {
- constructor(program,{globals,dt=20,maxOps=50000}={}){this.program=program;this.globals=globals?clone(globals):defaultGlobals();this.locals=Object.create(null);this.schemas=Object.create(null);this.sections=Object.create(null);this.dt=dt;this.now=0;this.scans=0;this.maxOps=maxOps;this.ops=0;this.generator=null;this.nextLine=null;this.lastLine=null;this.writes=[];this.debugEnabled=false;this.debugPending=new Map();this.debugCompleted=new Map();
+ constructor(program,{globals,dt=20,maxOps=50000,onDebug}={}){this.program=program;this.onDebug=onDebug;this.globals=globals?clone(globals):defaultGlobals();this.locals=Object.create(null);this.schemas=Object.create(null);this.sections=Object.create(null);this.dt=dt;this.now=0;this.scans=0;this.maxOps=maxOps;this.ops=0;this.generator=null;this.nextLine=null;this.lastLine=null;this.writes=[];this.debugEnabled=false;this.debugPending=new Map();this.debugCompleted=new Map();
   for(const d of program.decls){this.schemas[d.name]=d.type;this.locals[d.name]=makeValue(d.type);this.sections[d.name]=d.section;}
   if(program.returnType&&!own(this.locals,program.name)){this.schemas[program.name]=program.returnType;this.locals[program.name]=makeValue(program.returnType);this.sections[program.name]='VAR_OUTPUT';}
   for(const d of program.decls)if(d.init)this.locals[d.name]=coerce(this.eval(d.init).v,d.type,d.tok);
@@ -214,7 +219,7 @@ export class Machine {
  tick(tok){if(++this.ops>this.maxOps)throw new SclError('Przekroczono limit '+this.maxOps+' instrukcji w cyklu. Sprawdź pętle.',tok);}
  bool(e){const v=this.eval(e).v;if(typeof v!=='boolean')throw new SclError('Warunek wymaga BOOL.',e.tok);return v;}
  *execute(block){for(const s of block){this.tick(s.tok);yield s.tok.line;
-  switch(s.k){case 'assign':this.set(s.target,this.eval(s.value).v);this.recordDebug(s.tok.line,[s.target,s.value]);break;case 'call':this.timerCall(s);this.recordDebug(s.tok.line,[s.target,...s.args.map(a=>a.value)]);break;
+  switch(s.k){case 'debug':this.onDebug?.(s.tok,this);break;case 'assign':this.set(s.target,this.eval(s.value).v);this.recordDebug(s.tok.line,[s.target,s.value]);break;case 'call':this.timerCall(s);this.recordDebug(s.tok.line,[s.target,...s.args.map(a=>a.value)]);break;
    case 'if':{let chosen=s.other;for(const br of s.branches){const result=this.bool(br.c);this.recordDebug(br.c.tok?.line||s.tok.line,[br.c]);if(result){chosen=br.b;break;}}const flow=yield* this.execute(chosen);if(flow)return flow;break;}
    case 'case':{let v=this.eval(s.value).v,chosen=s.other;this.recordDebug(s.tok.line,[s.value]);outer:for(const c of s.cases)for(const [lo,hi] of c.labels)if(v>=this.eval(lo).v&&v<=this.eval(hi).v){chosen=c.b;break outer;}const flow=yield* this.execute(chosen);if(flow)return flow;break;}
    case 'for':{let lo=this.eval(s.lo).v,hi=this.eval(s.hi).v,by=this.eval(s.by).v;if(!Number.isInteger(lo)||!Number.isInteger(hi)||!Number.isInteger(by)||by===0)throw new SclError('FOR wymaga całkowitych granic i BY różnego od 0.',s.tok);for(let i=lo;by>0?i<=hi:i>=hi;i+=by){this.tick(s.tok);this.set(s.target,i);this.recordDebug(s.tok.line,[s.target,s.lo,s.hi]);const flow=yield* this.execute(s.b);if(flow==='return')return flow;if(flow==='exit')break;}break;}
